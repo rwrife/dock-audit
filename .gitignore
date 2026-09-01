@@ -1,0 +1,49 @@
+# Rust / Tauri build output
+/target/
+/src-tauri/target/
+
+# JavaScript dependencies and build output
+/node_modules/
+/dist/
+/.vite/
+/coverage/
+/test-results/
+/playwright-report/
+
+# Local application data and database sidecars
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+/local-data/
+
+# Packages and release artifacts
+/artifacts/
+/packages/
+*.msi
+*.msix
+*.dmg
+*.app
+*.zip
+*.sha256
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# IDE and OS state
+.vscode/
+.idea/
+.vs/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
