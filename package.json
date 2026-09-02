@@ -1,0 +1,37 @@
+{
+  "name": "dock-audit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": "22.23.x",
+    "pnpm": "11.25.x"
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "tauri dev",
+    "format": "prettier --write . && cargo fmt --all",
+    "format:check": "prettier --check . && cargo fmt --all -- --check",
+    "lint": "corepack pnpm lint:ui && corepack pnpm lint:rust",
+    "lint:ui": "tsc --noEmit",
+    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
+    "tauri": "tauri",
+    "test": "corepack pnpm test:ui && corepack pnpm test:rust",
+    "test:ui": "vitest run",
+    "test:rust": "cargo test --workspace"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@testing-library/dom": "10.4.1",
+    "@types/node": "26.4.1",
+    "jsdom": "30.0.1",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

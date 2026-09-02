@@ -94,7 +94,7 @@ OS adapters return capability-tagged observations. The pure Rust domain layer ow
 
 ## Current status and milestones
 
-**Status: documentation and backlog scaffold only.** No Tauri project, application binary, native adapter, automated test result, installer, signed/notarized package, screenshot, or live peripheral-detection result exists yet.
+**Status: bootstrap application shell.** The repository contains a pinned Tauri 2/Rust/TypeScript workspace, deterministic checks, and Windows/macOS CI. The shell explicitly reports that inventory adapters are unavailable. No native adapter, installer, signed/notarized package, screenshot, or live peripheral-detection result exists yet.
 
 1. Bootstrap the cross-platform app and CI.
 2. Define normalized observations, local profile storage, and privacy/redaction rules.
@@ -103,29 +103,25 @@ OS adapters return capability-tagged observations. The pure Rust domain layer ow
 5. Add timeline, export/backup, accessibility, and privacy controls.
 6. Package tested Windows and macOS preview builds.
 
-## Development quickstart (planned)
+## Development quickstart
 
-Prerequisites once issue #1 lands:
+The supported versions are pinned: Rust 1.98.0, Node.js 22.23.1, pnpm 11.25.0, and Tauri 2.11.x. Windows 10 22H2/11 requires Visual Studio 2022 C++ Build Tools, a Windows SDK, and WebView2. macOS 13+ requires Xcode Command Line Tools. See [DEVELOPMENT.md](DEVELOPMENT.md) for exact platform prerequisites and evidence limits.
 
-- Rust stable toolchain
-- Node.js 22 LTS and `pnpm`
-- Tauri 2 platform prerequisites
-- Windows 10 22H2/11 with Visual Studio Build Tools, or macOS 13+ with Xcode command-line tools
-
-Expected commands (not available in this scaffold yet):
+From a matching development host:
 
 ```text
-pnpm install
+corepack enable
+corepack prepare pnpm@11.25.0 --activate
+pnpm install --frozen-lockfile
+pnpm format:check
 pnpm lint
 pnpm test
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+pnpm build
 pnpm tauri dev
-pnpm tauri build
+pnpm tauri build --debug --no-bundle
 ```
 
-Exact supported versions and commands will be pinned by the bootstrap issue. Do not interpret this planned command list as build evidence.
+The build is an unsigned development executable, not an installer or compatibility claim. CI runs the same format, lint, Rust/UI test, web build, and unsigned application-build gates on Windows and macOS.
 
 ## Contributing
 

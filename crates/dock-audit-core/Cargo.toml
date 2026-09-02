@@ -1,0 +1,13 @@
+[package]
+name = "dock-audit-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+description = "UI-independent domain and platform-adapter contracts for Dock Audit"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }

@@ -1,6 +1,7 @@
 # Rust / Tauri build output
 /target/
 /src-tauri/target/
+/src-tauri/gen/
 
 # JavaScript dependencies and build output
 /node_modules/

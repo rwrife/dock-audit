@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Install pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: rustup show active-toolchain
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint TypeScript
+        run: pnpm lint:ui
+
+      - name: Lint Rust
+        run: pnpm lint:rust
+
+      - name: Test UI
+        run: pnpm test:ui
+
+      - name: Test Rust workspace
+        run: pnpm test:rust
+
+      - name: Build web assets
+        run: pnpm build
+
+      - name: Build unsigned debug application
+        run: pnpm tauri build --debug --no-bundle
+
+      - name: Upload unsigned debug application
+        uses: actions/upload-artifact@v4
+        with:
+          name: dock-audit-${{ runner.os }}-${{ runner.arch }}-debug
+          path: |
+            target/debug/dock-audit
+            target/debug/dock-audit.exe
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/dock-audit-core", "src-tauri"]
+resolver = "2"
