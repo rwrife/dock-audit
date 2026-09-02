@@ -94,7 +94,7 @@ OS adapters return capability-tagged observations. The pure Rust domain layer ow
 
 ## Current status and milestones
 
-**Status: bootstrap application shell.** The repository contains a pinned Tauri 2/Rust/TypeScript workspace, deterministic checks, and Windows/macOS CI. The shell explicitly reports that inventory adapters are unavailable. No native adapter, installer, signed/notarized package, screenshot, or live peripheral-detection result exists yet.
+**Status: domain and local-storage foundation.** The repository contains capability-aware observations, deterministic comparison rules, and versioned SQLite profile/snapshot storage with validated transactional backup restore. Identity comparisons use adapter-supplied keyed local hashes; the model does not persist raw serial numbers. The shell still explicitly reports that inventory adapters are unavailable. No native adapter, installer, signed/notarized package, screenshot, or live peripheral-detection result exists yet.
 
 1. Bootstrap the cross-platform app and CI.
 2. Define normalized observations, local profile storage, and privacy/redaction rules.
