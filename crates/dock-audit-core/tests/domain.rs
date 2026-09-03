@@ -66,5 +66,6 @@ fn invalid_restore_does_not_change_live_data() {
     };
     assert!(store.restore(&invalid).is_err());
     assert_eq!(store.profile("home").unwrap(), Some(profile()));
+    drop(store);
     std::fs::remove_file(path).unwrap();
 }
