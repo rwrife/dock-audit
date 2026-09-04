@@ -2,7 +2,11 @@
 
 ## Product scope
 
-Dock Audit is a read-only Windows 10/11 and macOS desktop utility that compares the peripherals currently visible to the operating system with a named, user-approved desk profile. Its primary value is a deterministic, privacy-conscious answer to “what is missing or different after I connected this dock?”
+Dock Audit is planned as a read-only desktop utility targeting Windows and macOS
+that compares peripherals visible to the operating system with a named,
+user-approved desk profile. Its primary value is a deterministic,
+privacy-conscious answer to “what is missing or different after I connected this
+dock?” This plan does not claim compatibility with any OS, dock, or peripheral.
 
 The MVP covers already connected USB devices/hubs, displays, audio endpoints, and dock-associated network interfaces. It records capability-aware observations, not electrical truth. It will not install drivers, reconfigure endpoints, reset devices, sniff traffic, certify cables, or run as an enterprise management agent.
 

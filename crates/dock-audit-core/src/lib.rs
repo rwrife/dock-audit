@@ -10,6 +10,8 @@ use std::{collections::BTreeMap, path::Path};
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdapterAvailability {
+    Available,
+    Degraded,
     Unavailable,
 }
 
@@ -19,17 +21,56 @@ pub struct AdapterStatus {
     pub availability: AdapterAvailability,
     pub observation_count: usize,
     pub message: String,
+    pub scan_health: BTreeMap<DeviceClass, ScanHealth>,
+    pub capability_gaps: Vec<CapabilityGap>,
 }
 
 impl AdapterStatus {
-    /// Returns the only honest status before native adapters are implemented.
+    /// Returns the only honest status where no platform adapter is compiled.
     #[must_use]
     pub fn bootstrap() -> Self {
         Self {
             availability: AdapterAvailability::Unavailable,
             observation_count: 0,
-            message: "Inventory adapters are not implemented yet. No devices were scanned."
+            message: "No native inventory adapter is available on this platform. No devices were scanned."
                 .to_owned(),
+            scan_health: BTreeMap::from([
+                (DeviceClass::Usb, ScanHealth::Unsupported),
+                (DeviceClass::Display, ScanHealth::Unsupported),
+                (DeviceClass::AudioInput, ScanHealth::Unsupported),
+                (DeviceClass::AudioOutput, ScanHealth::Unsupported),
+                (DeviceClass::Network, ScanHealth::Unsupported),
+            ]),
+            capability_gaps: Vec::new(),
+        }
+    }
+
+    /// Builds a concise shell status without exposing individual observations.
+    #[must_use]
+    pub fn from_report(report: &InventoryReport) -> Self {
+        let availability = if DeviceClass::ALL
+            .iter()
+            .all(|class| report.scan_health.get(class) == Some(&ScanHealth::Complete))
+            && report.capability_gaps.is_empty()
+        {
+            AdapterAvailability::Available
+        } else {
+            AdapterAvailability::Degraded
+        };
+        let message = if availability == AdapterAvailability::Available {
+            "Read-only native inventory completed. Observations do not establish hardware compatibility."
+                .to_owned()
+        } else {
+            "Read-only native inventory completed with capability gaps. Unobserved devices are not treated as missing."
+                .to_owned()
+        };
+
+        Self {
+            availability,
+            observation_count: report.observations.len(),
+            message,
+            scan_health: report.scan_health.clone(),
+            capability_gaps: report.capability_gaps.clone(),
         }
     }
 }
@@ -55,9 +96,38 @@ pub enum ScanHealth {
     Unsupported,
 }
 
+/// The reason a read-only inventory capability could not produce a result.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityGapKind {
+    AccessDenied,
+    ApiUnavailable,
+    QueryFailed,
+    PrivacyLimited,
+}
+
+/// A device-class capability that could not be observed. Messages and codes are
+/// adapter-defined constants and must not include device-provided values.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CapabilityGap {
+    pub class: DeviceClass,
+    pub capability: String,
+    pub kind: CapabilityGapKind,
+    pub message: String,
+    pub error_code: Option<i32>,
+}
+
 /// The source and expected stability of an observed field.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Capability {
+    pub source: String,
+    pub stable: bool,
+}
+
+/// A normalized, allow-listed value observed by a platform adapter.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NormalizedField {
+    pub value: String,
     pub source: String,
     pub stable: bool,
 }
@@ -68,7 +138,11 @@ pub struct Capability {
 pub struct Observation {
     pub class: DeviceClass,
     pub label: String,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, NormalizedField>,
+    #[serde(default)]
     pub capabilities: BTreeMap<String, Capability>,
+    #[serde(default)]
     pub identity_hashes: BTreeMap<String, String>,
 }
 
@@ -79,6 +153,9 @@ pub struct ProfileExpectation {
     pub class: DeviceClass,
     pub alias: String,
     pub required: bool,
+    #[serde(default)]
+    pub expected_fields: BTreeMap<String, String>,
+    #[serde(default)]
     pub identity_hashes: BTreeMap<String, String>,
     pub friendly_name: Option<String>,
 }
@@ -115,6 +192,144 @@ pub struct ComparisonResult {
     pub matches: Vec<MatchExplanation>,
 }
 
+/// The result of a single device-class scan.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ClassScan {
+    pub class: DeviceClass,
+    pub health: ScanHealth,
+    pub observations: Vec<Observation>,
+    pub capability_gaps: Vec<CapabilityGap>,
+}
+
+/// A complete inventory attempt. Every supported class must have a health entry;
+/// callers use it to avoid treating an unobserved device as absent.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InventoryReport {
+    pub observations: Vec<Observation>,
+    pub scan_health: BTreeMap<DeviceClass, ScanHealth>,
+    pub capability_gaps: Vec<CapabilityGap>,
+}
+
+/// An opt-in diagnostic payload containing counts only. It deliberately carries
+/// no labels, normalized values, or identity hashes.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RedactedDiagnostic {
+    pub capability_counts: BTreeMap<String, usize>,
+}
+
+impl InventoryReport {
+    /// Merges device-class results deterministically.
+    #[must_use]
+    pub fn from_class_scans(scans: impl IntoIterator<Item = ClassScan>) -> Self {
+        let mut observations = Vec::new();
+        let mut scan_health = BTreeMap::new();
+        let mut capability_gaps = Vec::new();
+
+        for scan in scans {
+            scan_health.insert(scan.class, scan.health);
+            observations.extend(scan.observations);
+            capability_gaps.extend(scan.capability_gaps);
+        }
+        observations.sort_by(|left, right| {
+            left.class
+                .cmp(&right.class)
+                .then_with(|| left.label.cmp(&right.label))
+                .then_with(|| left.identity_hashes.cmp(&right.identity_hashes))
+        });
+        capability_gaps.sort_by(|left, right| {
+            left.class
+                .cmp(&right.class)
+                .then_with(|| left.capability.cmp(&right.capability))
+                .then_with(|| left.error_code.cmp(&right.error_code))
+        });
+
+        Self {
+            observations,
+            scan_health,
+            capability_gaps,
+        }
+    }
+
+    /// Produces a deliberately non-identifying diagnostic summary.
+    #[must_use]
+    pub fn redacted_diagnostic(&self) -> RedactedDiagnostic {
+        let mut capability_counts = BTreeMap::new();
+        for class in DeviceClass::ALL {
+            let class_name = class.as_str();
+            let observation_count = self
+                .observations
+                .iter()
+                .filter(|observation| observation.class == class)
+                .count();
+            capability_counts.insert(format!("{class_name}.observations"), observation_count);
+            let health = self
+                .scan_health
+                .get(&class)
+                .copied()
+                .unwrap_or(ScanHealth::Unsupported);
+            *capability_counts
+                .entry(format!("{class_name}.health.{}", health.as_str()))
+                .or_insert(0) += 1;
+        }
+        for gap in &self.capability_gaps {
+            *capability_counts
+                .entry(format!(
+                    "{}.gap.{}.{}",
+                    gap.class.as_str(),
+                    gap.capability,
+                    gap.kind.as_str()
+                ))
+                .or_insert(0) += 1;
+        }
+        RedactedDiagnostic { capability_counts }
+    }
+}
+
+impl DeviceClass {
+    pub const ALL: [Self; 5] = [
+        Self::Usb,
+        Self::Display,
+        Self::AudioInput,
+        Self::AudioOutput,
+        Self::Network,
+    ];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Usb => "usb",
+            Self::Display => "display",
+            Self::AudioInput => "audio_input",
+            Self::AudioOutput => "audio_output",
+            Self::Network => "network",
+        }
+    }
+}
+
+impl ScanHealth {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Failed => "failed",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+impl CapabilityGapKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AccessDenied => "access_denied",
+            Self::ApiUnavailable => "api_unavailable",
+            Self::QueryFailed => "query_failed",
+            Self::PrivacyLimited => "privacy_limited",
+        }
+    }
+}
+
 /// Deterministically compares a profile to observations without allowing a friendly
 /// name to become an exact identity match.
 #[must_use]
@@ -144,9 +359,32 @@ pub fn compare(
         if candidates.len() == 1 {
             let index = candidates[0];
             used[index] = true;
+            let changed_fields: Vec<&str> = expected
+                .expected_fields
+                .iter()
+                .filter_map(|(field, expected_value)| {
+                    (observations[index]
+                        .attributes
+                        .get(field)
+                        .map(|observed| &observed.value)
+                        != Some(expected_value))
+                    .then_some(field.as_str())
+                })
+                .collect();
             matches.push(MatchExplanation {
-                kind: MatchKind::Exact,
-                reason: "A stable local identity hash matched.".into(),
+                kind: if changed_fields.is_empty() {
+                    MatchKind::Exact
+                } else {
+                    MatchKind::Changed
+                },
+                reason: if changed_fields.is_empty() {
+                    "A stable local identity hash matched.".into()
+                } else {
+                    format!(
+                        "A stable local identity hash matched, but expected fields changed or were unavailable: {}.",
+                        changed_fields.join(", ")
+                    )
+                },
                 expectation_id: Some(expected.id),
                 observation_index: Some(index),
             });
@@ -178,6 +416,13 @@ pub fn compare(
                             .into(),
                     expectation_id: Some(expected.id),
                     observation_index: Some(index),
+                });
+            } else if names.len() > 1 {
+                matches.push(MatchExplanation {
+                    kind: MatchKind::Ambiguous,
+                    reason: "More than one observation shared a friendly-name signal.".into(),
+                    expectation_id: Some(expected.id),
+                    observation_index: None,
                 });
             } else if matches!(
                 health.get(&expected.class),

@@ -1,0 +1,63 @@
+{
+  "before": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB hub",
+        "attributes": {
+          "topology_kind": {
+            "value": "hub",
+            "source": "setupapi.service",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "device_instance": "redacted-hub-hash"
+        }
+      },
+      {
+        "class": "usb",
+        "label": "USB device",
+        "attributes": {
+          "topology_kind": {
+            "value": "device",
+            "source": "setupapi.service",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "device_instance": "redacted-child-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  },
+  "after_child_detach": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB hub",
+        "attributes": {
+          "topology_kind": {
+            "value": "hub",
+            "source": "setupapi.service",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "device_instance": "redacted-hub-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "before": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB device",
+        "attributes": {
+          "topology_kind": {
+            "value": "device",
+            "source": "setupapi.service",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "device_instance": "redacted-usb-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  },
+  "during": {
+    "observations": [],
+    "scan_health": {
+      "usb": "partial"
+    },
+    "capability_gaps": [
+      {
+        "class": "usb",
+        "capability": "setupapi.enumerate_present_devices",
+        "kind": "query_failed",
+        "message": "The native API did not complete this read-only query; the affected class is unknown.",
+        "error_code": 1167
+      }
+    ]
+  },
+  "after": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB device",
+        "attributes": {
+          "topology_kind": {
+            "value": "device",
+            "source": "setupapi.service",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "device_instance": "redacted-usb-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  }
+}

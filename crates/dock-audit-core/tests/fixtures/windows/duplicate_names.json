@@ -1,0 +1,38 @@
+{
+  "observations": [
+    {
+      "class": "audio_output",
+      "label": "Audio output endpoint",
+      "attributes": {
+        "direction": {
+          "value": "output",
+          "source": "core_audio.data_flow",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "endpoint_id": "redacted-hash-a"
+      }
+    },
+    {
+      "class": "audio_output",
+      "label": "Audio output endpoint",
+      "attributes": {
+        "direction": {
+          "value": "output",
+          "source": "core_audio.data_flow",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "endpoint_id": "redacted-hash-b"
+      }
+    }
+  ],
+  "scan_health": {
+    "audio_output": "complete"
+  },
+  "capability_gaps": []
+}

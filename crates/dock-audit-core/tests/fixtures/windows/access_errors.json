@@ -1,0 +1,15 @@
+{
+  "observations": [],
+  "scan_health": {
+    "display": "partial"
+  },
+  "capability_gaps": [
+    {
+      "class": "display",
+      "capability": "displayconfig.target_name",
+      "kind": "access_denied",
+      "message": "The native API denied this read-only query; the affected class is unknown.",
+      "error_code": 5
+    }
+  ]
+}

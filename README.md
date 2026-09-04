@@ -6,7 +6,7 @@ Local-first desktop utility for laptop users to save expected desk-peripheral pr
 
 Dock Audit answers a common question after plugging into a USB-C or Thunderbolt dock: **what failed to appear this time?** It captures a user-approved baseline of observable peripherals at a desk, compares the current connection against that profile, and explains missing, unexpected, or changed devices without changing system settings.
 
-The MVP is a Windows 10/11 and macOS desktop app built with Tauri 2, Rust, TypeScript, and an accessible HTML/CSS interface. It is offline-first and requires no account.
+Dock Audit is a Tauri 2, Rust, TypeScript, and accessible HTML/CSS desktop app. It is offline-first and requires no account. The repository has no recorded real-Windows native diagnostic run, so it makes no Windows hardware or OS compatibility claim.
 
 ## Motivation
 
@@ -43,7 +43,7 @@ Dock Audit never enables, disables, resets, or reconfigures hardware. It does no
 - Read-only inventory adapters for:
   - USB devices and hubs using stable descriptors available to an ordinary user
   - connected displays using OS-provided identifiers and geometry
-  - audio endpoints by direction and display name
+  - active audio endpoints by input/output direction
   - dock-associated network interfaces and link state
 - Named profiles containing only user-selected expected devices
 - Deterministic matching with exact, fallback, and ambiguous confidence states
@@ -74,7 +74,9 @@ Dock Audit never enables, disables, resets, or reconfigures hardware. It does no
 - **No baseline microphone, camera, contacts, location, Bluetooth scanning, or network-capture permission.** Enumerating an already registered audio endpoint does not open the microphone. Platform-specific permission or capability gaps must be shown, never bypassed.
 - **Deletion:** users can delete individual profiles/snapshots or erase all local app data from Settings.
 
-See planned privacy tests in [PLAN.md](PLAN.md).
+See the Windows field/API boundary and ordinary-user limits in
+[WINDOWS_ADAPTERS.md](WINDOWS_ADAPTERS.md), and planned privacy tests in
+[PLAN.md](PLAN.md).
 
 ## Architecture at a glance
 
@@ -94,7 +96,7 @@ OS adapters return capability-tagged observations. The pure Rust domain layer ow
 
 ## Current status and milestones
 
-**Status: domain and local-storage foundation.** The repository contains capability-aware observations, deterministic comparison rules, and versioned SQLite profile/snapshot storage with validated transactional backup restore. Identity comparisons use adapter-supplied keyed local hashes; the model does not persist raw serial numbers. The shell still explicitly reports that inventory adapters are unavailable. No native adapter, installer, signed/notarized package, screenshot, or live peripheral-detection result exists yet.
+**Status: domain/local-storage foundation and unvalidated Windows source adapter.** The repository contains capability-aware observations, deterministic comparison rules, and versioned SQLite profile/snapshot storage with validated transactional backup restore. It also contains a Windows-only, read-only adapter implementation for SetupAPI, DisplayConfig, Core Audio, and IP Helper. It has fixture contracts and a cross-target source check, but **no recorded real-Windows diagnostic run**. It must not be interpreted as a Windows support, hardware, API-version, or peripheral compatibility claim. macOS inventory remains unavailable.
 
 1. Bootstrap the cross-platform app and CI.
 2. Define normalized observations, local profile storage, and privacy/redaction rules.
@@ -121,7 +123,7 @@ pnpm tauri dev
 pnpm tauri build --debug --no-bundle
 ```
 
-The build is an unsigned development executable, not an installer or compatibility claim. CI runs the same format, lint, Rust/UI test, web build, and unsigned application-build gates on Windows and macOS.
+The build is an unsigned development executable, not an installer or compatibility claim. CI is configured to run the same format, lint, Rust/UI test, web build, and unsigned application-build gates on Windows and macOS; configured CI does not substitute for a documented native diagnostic run.
 
 ## Contributing
 

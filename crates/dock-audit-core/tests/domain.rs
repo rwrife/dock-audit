@@ -12,6 +12,7 @@ fn profile() -> Profile {
             class: DeviceClass::Display,
             alias: "Desk display".into(),
             required: true,
+            expected_fields: BTreeMap::new(),
             identity_hashes: BTreeMap::from([("edid".into(), "keyed-hash".into())]),
             friendly_name: Some("Display".into()),
         }],
@@ -21,6 +22,7 @@ fn observation() -> Observation {
     Observation {
         class: DeviceClass::Display,
         label: "Display".into(),
+        attributes: BTreeMap::new(),
         capabilities: BTreeMap::new(),
         identity_hashes: BTreeMap::from([("edid".into(), "keyed-hash".into())]),
     }

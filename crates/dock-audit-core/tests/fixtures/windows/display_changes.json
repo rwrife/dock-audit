@@ -1,0 +1,28 @@
+{
+  "observations": [
+    {
+      "class": "display",
+      "label": "Connected display",
+      "attributes": {
+        "active_resolution": {
+          "value": "1920x1080",
+          "source": "displayconfig.target_mode",
+          "stable": false
+        },
+        "connection": {
+          "value": "displayport",
+          "source": "displayconfig.active_path",
+          "stable": false
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "edid_model": "redacted-display-hash"
+      }
+    }
+  ],
+  "scan_health": {
+    "display": "complete"
+  },
+  "capability_gaps": []
+}
