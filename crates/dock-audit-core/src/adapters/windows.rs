@@ -168,7 +168,7 @@ impl InventoryAdapter for WindowsInventoryAdapter {
     fn scan(&self) -> InventoryReport {
         #[cfg(windows)]
         {
-            return InventoryReport::from_class_scans([
+            InventoryReport::from_class_scans([
                 WindowsUsbScanner { adapter: self }.scan_class(),
                 WindowsDisplayScanner { adapter: self }.scan_class(),
                 WindowsAudioScanner {
@@ -182,7 +182,7 @@ impl InventoryAdapter for WindowsInventoryAdapter {
                 }
                 .scan_class(),
                 WindowsNetworkScanner { adapter: self }.scan_class(),
-            ]);
+            ])
         }
 
         #[cfg(not(windows))]
@@ -662,9 +662,10 @@ fn setupapi_string(
             Some(&mut required),
         )?
     };
-    let wide: Vec<u16> = buffer
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+    let (bytes, _) = buffer.as_chunks::<2>();
+    let wide: Vec<u16> = bytes
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
         .take_while(|character| *character != 0)
         .collect();
     Ok(Some(String::from_utf16_lossy(&wide)))
@@ -714,16 +715,16 @@ fn display_path_fields(
         ));
     }
     let mode_index = unsafe { path.targetInfo.Anonymous.modeInfoIdx };
-    if let Some(mode) = modes.get(mode_index as usize) {
-        if mode.infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET {
-            let signal = unsafe { mode.Anonymous.targetMode.targetVideoSignalInfo };
-            fields.push((
-                "active_resolution",
-                format!("{}x{}", signal.activeSize.cx, signal.activeSize.cy),
-                "displayconfig.target_mode",
-                false,
-            ));
-        }
+    if let Some(mode) = modes.get(mode_index as usize)
+        && mode.infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET
+    {
+        let signal = unsafe { mode.Anonymous.targetMode.targetVideoSignalInfo };
+        fields.push((
+            "active_resolution",
+            format!("{}x{}", signal.activeSize.cx, signal.activeSize.cy),
+            "displayconfig.target_mode",
+            false,
+        ));
     }
     fields
 }
