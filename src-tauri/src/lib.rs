@@ -7,7 +7,7 @@ fn adapter_status() -> AdapterStatus {
     #[cfg(windows)]
     {
         let adapter = WindowsInventoryAdapter::without_persistent_identity_key();
-        return AdapterStatus::from_report(&adapter.scan());
+        AdapterStatus::from_report(&adapter.scan())
     }
 
     #[cfg(not(windows))]
@@ -25,7 +25,7 @@ fn native_inventory_diagnostic(approved: bool) -> Result<RedactedDiagnostic, Str
     #[cfg(windows)]
     {
         let adapter = WindowsInventoryAdapter::without_persistent_identity_key();
-        return Ok(adapter.redacted_diagnostic());
+        Ok(adapter.redacted_diagnostic())
     }
 
     #[cfg(not(windows))]
