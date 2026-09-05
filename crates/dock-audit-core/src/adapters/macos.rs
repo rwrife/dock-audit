@@ -646,7 +646,7 @@ struct MacOsNetworkScanner<'a> {
 #[cfg(target_os = "macos")]
 impl ClassInventoryAdapter for MacOsNetworkScanner<'_> {
     fn scan_class(&self) -> ClassScan {
-        use system_configuration::network_configuration::{SCNetworkInterfaceType, get_interfaces};
+        use system_configuration::network_configuration::get_interfaces;
 
         let class = DeviceClass::Network;
         let interfaces = get_interfaces();
@@ -823,6 +823,7 @@ fn iokit_gap_kind_and_code(error: &IoKitError) -> (CapabilityGapKind, Option<i32
         IoKitError::UnexpectedNull(_) | IoKitError::InvalidArgument(_) => {
             (CapabilityGapKind::QueryFailed, None)
         }
+        _ => (CapabilityGapKind::QueryFailed, None),
     }
 }
 
