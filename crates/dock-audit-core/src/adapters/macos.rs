@@ -386,7 +386,7 @@ impl ClassInventoryAdapter for MacOsUsbScanner<'_> {
                     "USB device"
                 },
                 &fields,
-                identity.map(|(name, value, source, stable)| (name, value, source, stable)),
+                identity,
             ));
         }
 
