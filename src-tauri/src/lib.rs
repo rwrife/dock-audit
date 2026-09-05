@@ -1,5 +1,9 @@
+#[cfg(any(windows, target_os = "macos"))]
+use dock_audit_core::adapters::InventoryAdapter;
+#[cfg(target_os = "macos")]
+use dock_audit_core::adapters::macos::MacOsInventoryAdapter;
 #[cfg(windows)]
-use dock_audit_core::adapters::{InventoryAdapter, windows::WindowsInventoryAdapter};
+use dock_audit_core::adapters::windows::WindowsInventoryAdapter;
 use dock_audit_core::{AdapterStatus, RedactedDiagnostic};
 
 #[tauri::command]
@@ -10,7 +14,13 @@ fn adapter_status() -> AdapterStatus {
         AdapterStatus::from_report(&adapter.scan())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let adapter = MacOsInventoryAdapter::without_persistent_identity_key();
+        AdapterStatus::from_report(&adapter.scan())
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         AdapterStatus::bootstrap()
     }
@@ -28,9 +38,15 @@ fn native_inventory_diagnostic(approved: bool) -> Result<RedactedDiagnostic, Str
         Ok(adapter.redacted_diagnostic())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-        Err("A Windows native diagnostic is unavailable on this platform.".to_owned())
+        let adapter = MacOsInventoryAdapter::without_persistent_identity_key();
+        Ok(adapter.redacted_diagnostic())
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        Err("A native inventory diagnostic is unavailable on this platform.".to_owned())
     }
 }
 

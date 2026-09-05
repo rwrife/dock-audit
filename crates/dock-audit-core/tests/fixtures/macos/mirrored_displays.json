@@ -1,0 +1,48 @@
+{
+  "observations": [
+    {
+      "class": "display",
+      "label": "Display",
+      "attributes": {
+        "active_resolution": {
+          "value": "2560x1440",
+          "source": "CoreGraphics.CGDisplayPixels",
+          "stable": false
+        },
+        "mirrored": {
+          "value": "true",
+          "source": "CoreGraphics.CGDisplayIsInMirrorSet",
+          "stable": false
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "edid_model": "redacted-display-a"
+      }
+    },
+    {
+      "class": "display",
+      "label": "Display",
+      "attributes": {
+        "active_resolution": {
+          "value": "2560x1440",
+          "source": "CoreGraphics.CGDisplayPixels",
+          "stable": false
+        },
+        "mirrored": {
+          "value": "true",
+          "source": "CoreGraphics.CGDisplayIsInMirrorSet",
+          "stable": false
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "edid_model": "redacted-display-b"
+      }
+    }
+  ],
+  "scan_health": {
+    "display": "complete"
+  },
+  "capability_gaps": []
+}

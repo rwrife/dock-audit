@@ -25,3 +25,10 @@ windows = { version = "=0.62.2", features = [
   "Win32_NetworkManagement_Ndis",
   "Win32_System_Com",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "=0.25.0"
+coreaudio = "=0.2.23"
+iokit = "=0.5.3"
+libc = "=0.2.177"
+system-configuration = "=0.8.0"

@@ -1,0 +1,15 @@
+{
+  "observations": [],
+  "scan_health": {
+    "display": "failed"
+  },
+  "capability_gaps": [
+    {
+      "class": "display",
+      "capability": "coregraphics_active_displays",
+      "kind": "access_denied",
+      "message": "The native API denied this read-only query; the affected class is unknown.",
+      "error_code": 5
+    }
+  ]
+}

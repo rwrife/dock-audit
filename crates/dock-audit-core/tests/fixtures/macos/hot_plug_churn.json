@@ -1,0 +1,63 @@
+{
+  "before": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB device",
+        "attributes": {
+          "topology_role": {
+            "value": "device",
+            "source": "IOKit.IORegistryEntry",
+            "stable": true
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "service_path": "redacted-usb-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  },
+  "during": {
+    "observations": [],
+    "scan_health": {
+      "usb": "partial"
+    },
+    "capability_gaps": [
+      {
+        "class": "usb",
+        "capability": "iokit_usb_inventory",
+        "kind": "query_failed",
+        "message": "The native API did not complete this read-only query; the affected class is unknown.",
+        "error_code": 12345
+      }
+    ]
+  },
+  "after": {
+    "observations": [
+      {
+        "class": "usb",
+        "label": "USB device",
+        "attributes": {
+          "topology_role": {
+            "value": "device",
+            "source": "IOKit.IORegistryEntry",
+            "stable": true
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "service_path": "redacted-usb-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "usb": "complete"
+    },
+    "capability_gaps": []
+  }
+}
