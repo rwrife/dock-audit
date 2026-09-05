@@ -90,6 +90,50 @@ h1 {
   line-height: 1.55;
 }
 
+.scan-health,
+.capability-gaps ul,
+.diagnostic ul {
+  margin: 1.25rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.capability-gaps,
+.diagnostic {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #b9cbc5;
+}
+
+.capability-gaps h2,
+.diagnostic h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.diagnostic-button {
+  margin-top: 1.5rem;
+  padding: 0.65rem 0.9rem;
+  border: 2px solid #286353;
+  border-radius: 0.5rem;
+  background: #286353;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.diagnostic-button:focus-visible {
+  outline: 3px solid #996515;
+  outline-offset: 3px;
+}
+
+.diagnostic-error {
+  margin: 1.5rem 0 0;
+  color: #8a1f11;
+  font-weight: 700;
+}
+
 .privacy-note {
   color: #42534e;
   font-size: 0.9rem;
@@ -116,6 +160,17 @@ h1 {
     border-color: #e7b65d;
     background: #372b15;
     color: #fff4dc;
+  }
+
+  .capability-gaps,
+  .diagnostic {
+    border-color: #375048;
+  }
+
+  .diagnostic-button {
+    border-color: #a8cec1;
+    background: #a8cec1;
+    color: #111917;
   }
 }
 
