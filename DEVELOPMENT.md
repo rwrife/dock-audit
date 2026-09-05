@@ -1,10 +1,11 @@
 # Development
 
 Dock Audit is a Tauri 2 desktop application with a TypeScript/Vite frontend and a
-Rust workspace. On Windows builds, the shell invokes read-only native inventory
-and presents per-class health/capability gaps. Other builds explicitly report no
-native inventory adapter. This repository has no recorded real-Windows diagnostic
-run and therefore claims no platform or hardware compatibility.
+Rust workspace. On Windows and macOS builds, the shell invokes read-only native
+inventory adapters and presents per-class health/capability gaps. Other builds
+explicitly report no native inventory adapter. This repository still has no
+hardware-lab matrix across dock/peripheral combinations, so compatibility claims
+remain bounded to source + CI evidence.
 
 ## Pinned toolchain
 
@@ -46,8 +47,10 @@ Supported development hosts are macOS 13 or newer. Install:
 
 Apple Silicon and Intel are source targets. This bootstrap CI builds only the native
 architecture of GitHub's current `macos-latest` runner; it does not establish a
-universal binary or physical peripheral compatibility. macOS inventory is not yet
-implemented.
+universal binary or physical peripheral compatibility. The macOS adapter is
+implemented as a read-only source boundary over IOKit/CoreGraphics/CoreAudio/
+SystemConfiguration. See [MACOS_ADAPTERS.md](MACOS_ADAPTERS.md) for exact
+field-level behavior and capability-gap semantics.
 
 Tauri's maintained prerequisite details are at
 <https://v2.tauri.app/start/prerequisites/>.

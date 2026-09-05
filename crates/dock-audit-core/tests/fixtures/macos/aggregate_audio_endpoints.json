@@ -1,0 +1,49 @@
+{
+  "observations": [
+    {
+      "class": "audio_input",
+      "label": "Audio input endpoint",
+      "attributes": {
+        "direction": {
+          "value": "input",
+          "source": "CoreAudio.Scope",
+          "stable": true
+        },
+        "aggregate_group": {
+          "value": "false",
+          "source": "CoreAudio.DEVICE_TRANSPORT_TYPE",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "coreaudio_uid": "redacted-input-hash"
+      }
+    },
+    {
+      "class": "audio_output",
+      "label": "Audio output endpoint",
+      "attributes": {
+        "direction": {
+          "value": "output",
+          "source": "CoreAudio.Scope",
+          "stable": true
+        },
+        "aggregate_group": {
+          "value": "true",
+          "source": "CoreAudio.DEVICE_TRANSPORT_TYPE",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {
+        "coreaudio_uid": "redacted-output-hash"
+      }
+    }
+  ],
+  "scan_health": {
+    "audio_input": "complete",
+    "audio_output": "complete"
+  },
+  "capability_gaps": []
+}

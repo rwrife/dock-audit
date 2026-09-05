@@ -1,0 +1,34 @@
+{
+  "observations": [
+    {
+      "class": "audio_output",
+      "label": "Audio output endpoint",
+      "attributes": {
+        "direction": {
+          "value": "output",
+          "source": "CoreAudio.Scope",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {}
+    },
+    {
+      "class": "audio_output",
+      "label": "Audio output endpoint",
+      "attributes": {
+        "direction": {
+          "value": "output",
+          "source": "CoreAudio.Scope",
+          "stable": true
+        }
+      },
+      "capabilities": {},
+      "identity_hashes": {}
+    }
+  ],
+  "scan_health": {
+    "audio_output": "complete"
+  },
+  "capability_gaps": []
+}

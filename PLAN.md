@@ -72,8 +72,7 @@ Native API choices remain behind traits until small capability spikes confirm OS
 
 ### M3 — Read-only inventory adapters
 
-- Implement Windows adapters and fixture-based contract tests.
-- Implement macOS adapters and fixture-based contract tests.
+- Implement Windows and macOS adapters with fixture-based contract tests.
 - Document field stability, ordinary-user access, OS limitations, and unsupported states.
 - Test adapter failures and partial scans without converting absence of evidence into a missing-device claim.
 

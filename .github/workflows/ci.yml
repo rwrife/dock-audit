@@ -60,6 +60,10 @@ jobs:
       - name: Test Rust workspace
         run: pnpm test:rust
 
+      - name: Emit redacted macOS diagnostic sample
+        if: matrix.os == 'macos-latest'
+        run: cargo run -p dock-audit-core --example macos_redacted_diagnostic
+
       - name: Build web assets
         run: pnpm build
 

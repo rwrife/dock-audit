@@ -1,0 +1,48 @@
+{
+  "before": {
+    "observations": [
+      {
+        "class": "network",
+        "label": "Network interface",
+        "attributes": {
+          "link_state": {
+            "value": "up",
+            "source": "BSD.getifaddrs",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "bsd_name": "redacted-network-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "network": "complete"
+    },
+    "capability_gaps": []
+  },
+  "after": {
+    "observations": [
+      {
+        "class": "network",
+        "label": "Network interface",
+        "attributes": {
+          "link_state": {
+            "value": "dormant",
+            "source": "BSD.getifaddrs",
+            "stable": false
+          }
+        },
+        "capabilities": {},
+        "identity_hashes": {
+          "bsd_name": "redacted-network-hash"
+        }
+      }
+    ],
+    "scan_health": {
+      "network": "complete"
+    },
+    "capability_gaps": []
+  }
+}
