@@ -31,12 +31,12 @@ body {
 }
 
 .status-card {
-  width: min(100%, 48rem);
-  padding: clamp(1.5rem, 5vw, 3.5rem);
+  width: min(100%, 70rem);
+  padding: clamp(1.25rem, 4vw, 2.5rem);
   border: 1px solid #b9cbc5;
-  border-radius: 1.25rem;
+  border-radius: 1rem;
   background: #f9fcfb;
-  box-shadow: 0 1rem 3rem rgb(27 61 50 / 12%);
+  box-shadow: 0 1rem 3rem rgb(27 61 50 / 10%);
 }
 
 .eyebrow {
@@ -50,22 +50,28 @@ body {
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 8vw, 4.75rem);
+  font-size: clamp(2rem, 8vw, 4rem);
   letter-spacing: -0.04em;
   line-height: 1;
 }
 
+h2,
+h3,
+h4 {
+  margin: 0;
+}
+
 .lede {
-  max-width: 38rem;
-  margin: 1.25rem 0 2rem;
-  font-size: clamp(1rem, 2.5vw, 1.25rem);
-  line-height: 1.6;
+  max-width: 44rem;
+  margin: 1rem 0 1.5rem;
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  line-height: 1.5;
 }
 
 .notice {
   display: flex;
   gap: 1rem;
-  padding: 1.25rem;
+  padding: 1rem;
   border: 2px solid #996515;
   border-radius: 0.75rem;
   background: #fff7df;
@@ -87,56 +93,148 @@ h1 {
 .notice p,
 .privacy-note {
   margin: 0.35rem 0 0;
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
-.scan-health,
-.capability-gaps ul,
-.diagnostic ul {
-  margin: 1.25rem 0 0;
-  padding-left: 1.25rem;
-  line-height: 1.6;
-}
-
-.capability-gaps,
-.diagnostic {
+.workflow-section,
+.scan-health-section,
+.capability-gaps {
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid #b9cbc5;
 }
 
-.capability-gaps h2,
-.diagnostic h2 {
-  margin: 0;
-  font-size: 1.1rem;
+.scan-health,
+.capability-gaps ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.55;
 }
 
-.diagnostic-button {
-  margin-top: 1.5rem;
-  padding: 0.65rem 0.9rem;
-  border: 2px solid #286353;
+.profile-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.field-label {
+  display: block;
+  font-weight: 700;
+  margin-top: 0.5rem;
+}
+
+.text-input {
+  width: min(100%, 30rem);
+  border: 1px solid #90a8a1;
   border-radius: 0.5rem;
-  background: #286353;
-  color: white;
-  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.8rem;
   font: inherit;
   font-weight: 700;
+  cursor: pointer;
 }
 
-.diagnostic-button:focus-visible {
-  outline: 3px solid #996515;
-  outline-offset: 3px;
+.primary-button {
+  background: #286353;
+  border-color: #286353;
+  color: white;
 }
 
-.diagnostic-error {
-  margin: 1.5rem 0 0;
-  color: #8a1f11;
+.secondary-button {
+  background: #d8e6e1;
+  border-color: #8fb3a8;
+  color: #183831;
+}
+
+.danger-button {
+  background: #8d2d2d;
+  border-color: #8d2d2d;
+  color: white;
+}
+
+.observation-list {
+  border: 1px solid #9fb7b0;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+}
+
+.observation-item,
+.expectation-item,
+.snapshot-item,
+.result-item {
+  border: 1px solid #c7d7d2;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  background: #fff;
+}
+
+.expectation-list,
+.snapshot-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.progress-block {
+  margin-top: 0.75rem;
+}
+
+progress {
+  width: min(100%, 22rem);
+  height: 1rem;
+}
+
+.result-group {
+  margin-top: 1rem;
+}
+
+.result-group ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.summary-line {
+  margin: 0.6rem 0;
   font-weight: 700;
+}
+
+.subtle {
+  margin: 0.45rem 0 0;
+  color: #42534e;
+  line-height: 1.45;
 }
 
 .privacy-note {
   color: #42534e;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+}
+
+:where(button, input, select):focus-visible {
+  outline: 3px solid #996515;
+  outline-offset: 2px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -152,7 +250,8 @@ h1 {
   }
 
   .eyebrow,
-  .privacy-note {
+  .privacy-note,
+  .subtle {
     color: #a8cec1;
   }
 
@@ -162,12 +261,29 @@ h1 {
     color: #fff4dc;
   }
 
-  .capability-gaps,
-  .diagnostic {
+  .workflow-section,
+  .scan-health-section,
+  .capability-gaps {
     border-color: #375048;
   }
 
-  .diagnostic-button {
+  .text-input,
+  .observation-item,
+  .expectation-item,
+  .snapshot-item,
+  .result-item {
+    border-color: #4a645c;
+    background: #20302b;
+    color: inherit;
+  }
+
+  .secondary-button {
+    background: #203730;
+    border-color: #97beb1;
+    color: #e7f4ef;
+  }
+
+  .primary-button {
     border-color: #a8cec1;
     background: #a8cec1;
     color: #111917;
@@ -176,7 +292,11 @@ h1 {
 
 @media (prefers-contrast: more) {
   .status-card,
-  .notice {
+  .notice,
+  .observation-item,
+  .expectation-item,
+  .snapshot-item,
+  .result-item {
     border-width: 3px;
   }
 }
