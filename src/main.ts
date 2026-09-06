@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import "./styles.css";
 import {
-  type AdapterStatus,
-  type RedactedDiagnostic,
-  bootstrapStatus,
-  renderApp,
+  type ComparisonResult,
+  createDockAuditApp,
+  type DockAuditBackend,
+  type InventoryReport,
+  type Profile,
 } from "./app";
 
 function requiredAppRoot(): HTMLElement {
@@ -15,47 +16,16 @@ function requiredAppRoot(): HTMLElement {
   return root;
 }
 
-const appRoot = requiredAppRoot();
-let status = bootstrapStatus;
-let diagnostic: RedactedDiagnostic | undefined;
-let diagnosticError: string | undefined;
-
-function render(): void {
-  renderApp(appRoot, status, {
-    diagnostic,
-    diagnosticError,
-    onDiagnostic: () => {
-      diagnostic = undefined;
-      diagnosticError = undefined;
-      void invoke<RedactedDiagnostic>("native_inventory_diagnostic", {
-        approved: true,
-      }).then(
-        (result) => {
-          diagnostic = result;
-          render();
-        },
-        () => {
-          diagnosticError =
-            "The approved native diagnostic did not complete. No device details were emitted.";
-          render();
-        },
-      );
-    },
-  });
-}
-
-render();
-void invoke<AdapterStatus>("adapter_status").then(
-  (result) => {
-    status = result;
-    render();
+const backend: DockAuditBackend = {
+  async scanInventory(): Promise<InventoryReport> {
+    return invoke<InventoryReport>("inventory_report");
   },
-  () => {
-    status = {
-      ...bootstrapStatus,
-      message:
-        "The native inventory status could not be loaded. No devices were scanned or treated as missing.",
-    };
-    render();
+  async compareProfile(
+    profile: Profile,
+    report: InventoryReport,
+  ): Promise<ComparisonResult> {
+    return invoke<ComparisonResult>("compare_profile", { profile, report });
   },
-);
+};
+
+createDockAuditApp(requiredAppRoot(), { backend });
