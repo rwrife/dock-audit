@@ -5,9 +5,10 @@ use dock_audit_core::adapters::macos::MacOsInventoryAdapter;
 #[cfg(windows)]
 use dock_audit_core::adapters::windows::WindowsInventoryAdapter;
 use dock_audit_core::{
-    AdapterStatus, ClassScan, ComparisonResult, DeviceClass, InventoryReport, Profile,
-    RedactedDiagnostic, ScanHealth, compare,
+    AdapterStatus, ComparisonResult, InventoryReport, Profile, RedactedDiagnostic, compare,
 };
+#[cfg(not(any(windows, target_os = "macos")))]
+use dock_audit_core::{ClassScan, DeviceClass, ScanHealth};
 
 #[cfg(not(any(windows, target_os = "macos")))]
 fn bootstrap_report() -> InventoryReport {
@@ -24,13 +25,13 @@ fn inventory_report() -> InventoryReport {
     #[cfg(windows)]
     {
         let adapter = WindowsInventoryAdapter::without_persistent_identity_key();
-        return adapter.scan();
+        adapter.scan()
     }
 
     #[cfg(target_os = "macos")]
     {
         let adapter = MacOsInventoryAdapter::without_persistent_identity_key();
-        return adapter.scan();
+        adapter.scan()
     }
 
     #[cfg(not(any(windows, target_os = "macos")))]
