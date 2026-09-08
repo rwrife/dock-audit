@@ -98,10 +98,53 @@ interface StoredSnapshot {
   comparison: ComparisonResult;
 }
 
+export interface TimelineEvent {
+  id: string;
+  captured_at: string;
+  category:
+    | "scan_started"
+    | "scan_completed"
+    | "scan_failed"
+    | "class_delta"
+    | "operator";
+  message: string;
+  details: Record<string, string>;
+}
+
+export interface RetentionSettings {
+  snapshot_limit: number;
+  timeline_limit: number;
+  timeline_days: number;
+}
+
+interface PersistedSettings extends RetentionSettings {
+  timeline_capture_enabled: boolean;
+  include_identifying_exports: boolean;
+}
+
+export interface BackupArchive {
+  version: number;
+  selected_profile_id: string | null;
+  profiles: StoredProfile[];
+  snapshots: StoredSnapshot[];
+  timeline_events: TimelineEvent[];
+  settings: PersistedSettings;
+}
+
+export interface RestoreConflictPreview {
+  profiles_overwritten: number;
+  profiles_added: number;
+  snapshots_overwritten: number;
+  snapshots_added: number;
+  timeline_events_replaced: number;
+}
+
 interface PersistedState {
   selected_profile_id: string | null;
   profiles: StoredProfile[];
   snapshots: StoredSnapshot[];
+  timeline_events: TimelineEvent[];
+  settings: PersistedSettings;
 }
 
 interface CaptureDraft {
@@ -135,6 +178,8 @@ interface State {
   selectedProfileId: string | null;
   profileEditDraft: StoredProfile | null;
   snapshots: StoredSnapshot[];
+  timelineEvents: TimelineEvent[];
+  settings: PersistedSettings;
   observations: Observation[];
   scanHealth: Record<DeviceClass, ScanHealth>;
   capabilityGaps: CapabilityGap[];
@@ -145,6 +190,11 @@ interface State {
   checkStatus: string;
   result: GroupedResult | null;
   notice: string;
+  includeIdentifyingExportFields: boolean;
+  exportPreviewJson: string;
+  exportPreviewMarkdown: string;
+  restoreDraft: string;
+  restorePreview: RestoreConflictPreview | null;
 }
 
 export interface DockAuditBackend {
@@ -173,7 +223,15 @@ export interface DockAuditAppDependencies {
   progressIntervalMs?: number;
 }
 
-const STORAGE_KEY = "dock-audit.issue5.v1";
+const STORAGE_KEY = "dock-audit.issue6.v1";
+const LEGACY_STORAGE_KEY = "dock-audit.issue5.v1";
+const BACKUP_ARCHIVE_VERSION = 2;
+const REDACTED = "[REDACTED]";
+const DEFAULT_RETENTION_SETTINGS: RetentionSettings = {
+  snapshot_limit: 30,
+  timeline_limit: 200,
+  timeline_days: 7,
+};
 const ALL_CLASSES: DeviceClass[] = [
   "usb",
   "display",
@@ -194,12 +252,157 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function defaultSettings(): PersistedSettings {
+  return {
+    ...DEFAULT_RETENTION_SETTINGS,
+    timeline_capture_enabled: false,
+    include_identifying_exports: false,
+  };
+}
+
+function sanitizePositiveInt(
+  value: unknown,
+  fallback: number,
+  min = 1,
+  max = 500,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const rounded = Math.round(value);
+  if (rounded < min) {
+    return min;
+  }
+  if (rounded > max) {
+    return max;
+  }
+  return rounded;
+}
+
+function normalizeSettings(
+  raw: Partial<PersistedSettings> | null | undefined,
+): PersistedSettings {
+  const fallback = defaultSettings();
+  return {
+    timeline_capture_enabled: raw?.timeline_capture_enabled === true,
+    include_identifying_exports: raw?.include_identifying_exports === true,
+    snapshot_limit: sanitizePositiveInt(
+      raw?.snapshot_limit,
+      fallback.snapshot_limit,
+      1,
+      200,
+    ),
+    timeline_limit: sanitizePositiveInt(
+      raw?.timeline_limit,
+      fallback.timeline_limit,
+      1,
+      2000,
+    ),
+    timeline_days: sanitizePositiveInt(
+      raw?.timeline_days,
+      fallback.timeline_days,
+      1,
+      365,
+    ),
+  };
+}
+
+function parseTimelineEvents(raw: unknown): TimelineEvent[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((entry) => typeof entry === "object" && entry !== null)
+    .map((entry) => {
+      const candidate = entry as Partial<TimelineEvent>;
+      return {
+        id:
+          typeof candidate.id === "string" && candidate.id.length > 0
+            ? candidate.id
+            : randomId("timeline"),
+        captured_at:
+          typeof candidate.captured_at === "string" &&
+          candidate.captured_at.length > 0
+            ? candidate.captured_at
+            : new Date(0).toISOString(),
+        category:
+          candidate.category === "scan_started" ||
+          candidate.category === "scan_completed" ||
+          candidate.category === "class_delta" ||
+          candidate.category === "operator"
+            ? candidate.category
+            : "operator",
+        message:
+          typeof candidate.message === "string" ? candidate.message : "event",
+        details:
+          candidate.details && typeof candidate.details === "object"
+            ? Object.fromEntries(
+                Object.entries(candidate.details).map(([key, value]) => [
+                  key,
+                  typeof value === "string" ? value : JSON.stringify(value),
+                ]),
+              )
+            : {},
+      };
+    })
+    .sort((left, right) => right.captured_at.localeCompare(left.captured_at));
+}
+
 function defaultPersistedState(): PersistedState {
   return {
     selected_profile_id: null,
     profiles: [],
     snapshots: [],
+    timeline_events: [],
+    settings: defaultSettings(),
   };
+}
+
+function pruneByRetention(state: PersistedState, now: Date): PersistedState {
+  const snapshotLimit = state.settings.snapshot_limit;
+  const timelineLimit = state.settings.timeline_limit;
+  const retentionMs = state.settings.timeline_days * 24 * 60 * 60 * 1000;
+  const oldestAllowed = now.getTime() - retentionMs;
+
+  const prunedSnapshots = state.snapshots.slice(0, snapshotLimit);
+  const prunedTimeline = state.timeline_events
+    .filter((event) => {
+      const parsed = Date.parse(event.captured_at);
+      return Number.isFinite(parsed) && parsed >= oldestAllowed;
+    })
+    .slice(0, timelineLimit);
+
+  return {
+    ...state,
+    snapshots: prunedSnapshots,
+    timeline_events: prunedTimeline,
+  };
+}
+
+function normalizePersistedState(raw: Partial<PersistedState>): PersistedState {
+  const selectedProfileId =
+    typeof raw.selected_profile_id === "string"
+      ? raw.selected_profile_id
+      : null;
+  const profiles = Array.isArray(raw.profiles)
+    ? (raw.profiles as StoredProfile[])
+    : [];
+  const snapshots = Array.isArray(raw.snapshots)
+    ? (raw.snapshots as StoredSnapshot[])
+    : [];
+  const settings = normalizeSettings(raw.settings);
+  const timelineEvents = parseTimelineEvents(raw.timeline_events);
+
+  return pruneByRetention(
+    {
+      selected_profile_id: selectedProfileId,
+      profiles,
+      snapshots,
+      timeline_events: timelineEvents,
+      settings,
+    },
+    new Date(),
+  );
 }
 
 export function createLocalStorageStorage(
@@ -207,24 +410,14 @@ export function createLocalStorageStorage(
 ): DockAuditStorage {
   return {
     load(): PersistedState {
-      const raw = backing.getItem(STORAGE_KEY);
+      const raw =
+        backing.getItem(STORAGE_KEY) ?? backing.getItem(LEGACY_STORAGE_KEY);
       if (raw === null) {
         return defaultPersistedState();
       }
       try {
         const parsed = JSON.parse(raw) as Partial<PersistedState>;
-        return {
-          selected_profile_id:
-            typeof parsed.selected_profile_id === "string"
-              ? parsed.selected_profile_id
-              : null,
-          profiles: Array.isArray(parsed.profiles)
-            ? (parsed.profiles as StoredProfile[])
-            : [],
-          snapshots: Array.isArray(parsed.snapshots)
-            ? (parsed.snapshots as StoredSnapshot[])
-            : [],
-        };
+        return normalizePersistedState(parsed);
       } catch {
         return defaultPersistedState();
       }
@@ -238,11 +431,16 @@ export function createLocalStorageStorage(
 export function createMemoryStorage(
   seed?: Partial<PersistedState>,
 ): DockAuditStorage {
+  const normalizedSeed = normalizePersistedState(
+    seed ?? defaultPersistedState(),
+  );
   let state: PersistedState = {
     ...defaultPersistedState(),
-    ...seed,
-    profiles: clone(seed?.profiles ?? []),
-    snapshots: clone(seed?.snapshots ?? []),
+    ...normalizedSeed,
+    profiles: clone(normalizedSeed.profiles),
+    snapshots: clone(normalizedSeed.snapshots),
+    timeline_events: clone(normalizedSeed.timeline_events),
+    settings: clone(normalizedSeed.settings),
   };
 
   return {
@@ -280,7 +478,7 @@ function randomId(prefix: string): string {
 }
 
 function humanizeClass(deviceClass: DeviceClass): string {
-  return deviceClass.replaceAll("_", " ");
+  return deviceClass.replace(/_/g, " ");
 }
 
 function textElement<K extends keyof HTMLElementTagNameMap>(
@@ -307,6 +505,343 @@ function looksSensitiveKey(key: string): boolean {
     "host",
     "account",
   ].some((needle) => lowered.includes(needle));
+}
+
+function looksExportSensitiveKey(key: string): boolean {
+  const lowered = key.toLowerCase();
+  return (
+    looksSensitiveKey(key) ||
+    lowered.includes("identity") ||
+    lowered.includes("hash") ||
+    lowered.includes("serial") ||
+    lowered.includes("guid") ||
+    lowered.includes("udid") ||
+    lowered.includes("uuid") ||
+    lowered.includes("hostname")
+  );
+}
+
+function looksLikeMacAddress(value: string): boolean {
+  return /(?:^|\b)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?:\b|$)/i.test(value);
+}
+
+function looksLikeLocalPath(value: string): boolean {
+  return (
+    /[a-z]:\\(?:[^\\\r\n]+\\?)+/i.test(value) ||
+    /\/(?:Users|home|private|var|Volumes)\/[^\s]+/.test(value)
+  );
+}
+
+function looksLikeHighEntropyIdentifier(value: string): boolean {
+  if (value === REDACTED) {
+    return false;
+  }
+  const compact = value.replace(/[^a-z0-9]/gi, "");
+  if (compact.length < 16) {
+    return false;
+  }
+  return /[a-z]/i.test(compact) && /\d/.test(compact);
+}
+
+function redactStringValue(value: string): string {
+  if (value === REDACTED) {
+    return REDACTED;
+  }
+  if (
+    looksLikeMacAddress(value) ||
+    looksLikeLocalPath(value) ||
+    looksLikeHighEntropyIdentifier(value)
+  ) {
+    return REDACTED;
+  }
+  return value;
+}
+
+function sortForDeterminism(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortForDeterminism(item));
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, sortForDeterminism(entry)]);
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+
+export function stableStringify(value: unknown): string {
+  return JSON.stringify(sortForDeterminism(value), null, 2);
+}
+
+function redactValue(value: unknown, keyPath: string[]): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactValue(entry, keyPath));
+  }
+  if (typeof value === "string") {
+    const lastKey = keyPath[keyPath.length - 1] ?? "";
+    if (looksExportSensitiveKey(lastKey)) {
+      return REDACTED;
+    }
+    return redactStringValue(value);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+        if (looksExportSensitiveKey(key)) {
+          return [key, REDACTED];
+        }
+        return [key, redactValue(entry, [...keyPath, key])];
+      }),
+    );
+  }
+  return value;
+}
+
+export function redactForExport<T>(
+  value: T,
+  includeIdentifyingFields: boolean,
+): T {
+  if (includeIdentifyingFields) {
+    return clone(value);
+  }
+  return redactValue(clone(value), []) as T;
+}
+
+function sortedStateForExport(state: PersistedState): PersistedState {
+  const profiles = [...state.profiles].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const snapshots = [...state.snapshots].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const timelineEvents = [...state.timeline_events].sort((left, right) => {
+    const timestamp = left.captured_at.localeCompare(right.captured_at);
+    if (timestamp !== 0) {
+      return timestamp;
+    }
+    return left.id.localeCompare(right.id);
+  });
+  return {
+    selected_profile_id: state.selected_profile_id,
+    profiles,
+    snapshots,
+    timeline_events: timelineEvents,
+    settings: clone(state.settings),
+  };
+}
+
+export function createBackupArchive(state: PersistedState): BackupArchive {
+  const normalized = sortedStateForExport(state);
+  return {
+    version: BACKUP_ARCHIVE_VERSION,
+    selected_profile_id: normalized.selected_profile_id,
+    profiles: normalized.profiles,
+    snapshots: normalized.snapshots,
+    timeline_events: normalized.timeline_events,
+    settings: normalized.settings,
+  };
+}
+
+export function parseBackupArchive(raw: string): BackupArchive {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Backup JSON is malformed.");
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Backup JSON must be an object.");
+  }
+
+  const candidate = parsed as Partial<BackupArchive>;
+  if (candidate.version !== BACKUP_ARCHIVE_VERSION) {
+    throw new Error(
+      `Unsupported backup version. Expected ${BACKUP_ARCHIVE_VERSION}.`,
+    );
+  }
+
+  const normalized = normalizePersistedState({
+    selected_profile_id:
+      typeof candidate.selected_profile_id === "string"
+        ? candidate.selected_profile_id
+        : null,
+    profiles: Array.isArray(candidate.profiles)
+      ? (candidate.profiles as StoredProfile[])
+      : [],
+    snapshots: Array.isArray(candidate.snapshots)
+      ? (candidate.snapshots as StoredSnapshot[])
+      : [],
+    timeline_events: Array.isArray(candidate.timeline_events)
+      ? (candidate.timeline_events as TimelineEvent[])
+      : [],
+    settings:
+      candidate.settings && typeof candidate.settings === "object"
+        ? (candidate.settings as PersistedSettings)
+        : defaultSettings(),
+  });
+
+  const profileIds = new Set(normalized.profiles.map((profile) => profile.id));
+  if (
+    normalized.selected_profile_id !== null &&
+    !profileIds.has(normalized.selected_profile_id)
+  ) {
+    throw new Error(
+      "Backup selected_profile_id does not refer to an included profile.",
+    );
+  }
+  if (
+    normalized.snapshots.some(
+      (snapshot) =>
+        !profileIds.has(snapshot.profile_id) || snapshot.id.length === 0,
+    )
+  ) {
+    throw new Error("Backup snapshots reference missing profiles.");
+  }
+
+  return {
+    version: BACKUP_ARCHIVE_VERSION,
+    selected_profile_id: normalized.selected_profile_id,
+    profiles: normalized.profiles,
+    snapshots: normalized.snapshots,
+    timeline_events: normalized.timeline_events,
+    settings: normalized.settings,
+  };
+}
+
+export function previewRestoreConflicts(
+  current: PersistedState,
+  incoming: BackupArchive,
+): RestoreConflictPreview {
+  const currentProfileIds = new Set(
+    current.profiles.map((profile) => profile.id),
+  );
+  const incomingProfileIds = new Set(
+    incoming.profiles.map((profile) => profile.id),
+  );
+  const currentSnapshotIds = new Set(
+    current.snapshots.map((snapshot) => snapshot.id),
+  );
+
+  let profilesOverwritten = 0;
+  incomingProfileIds.forEach((id) => {
+    if (currentProfileIds.has(id)) {
+      profilesOverwritten += 1;
+    }
+  });
+
+  let snapshotsOverwritten = 0;
+  incoming.snapshots.forEach((snapshot) => {
+    if (currentSnapshotIds.has(snapshot.id)) {
+      snapshotsOverwritten += 1;
+    }
+  });
+
+  return {
+    profiles_overwritten: profilesOverwritten,
+    profiles_added: incoming.profiles.length - profilesOverwritten,
+    snapshots_overwritten: snapshotsOverwritten,
+    snapshots_added: incoming.snapshots.length - snapshotsOverwritten,
+    timeline_events_replaced: current.timeline_events.length,
+  };
+}
+
+function classObservationCounts(
+  observations: Observation[],
+): Record<DeviceClass, number> {
+  const counts: Record<DeviceClass, number> = {
+    usb: 0,
+    display: 0,
+    audio_input: 0,
+    audio_output: 0,
+    network: 0,
+  };
+  observations.forEach((observation) => {
+    counts[observation.class] += 1;
+  });
+  return counts;
+}
+
+function markdownEscape(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+export function createSupportReport(
+  state: PersistedState,
+  runtime: {
+    scanHealth: Record<DeviceClass, ScanHealth>;
+    capabilityGaps: CapabilityGap[];
+    notice: string;
+  },
+  includeIdentifyingFields: boolean,
+): { payload: unknown; json: string; markdown: string } {
+  const deterministicState = sortedStateForExport(state);
+  const payloadBase = {
+    schema_version: BACKUP_ARCHIVE_VERSION,
+    privacy: {
+      include_identifying_fields: includeIdentifyingFields,
+      default_redaction_token: REDACTED,
+      warning:
+        "Native observations are capability-aware and not electrical truth. Redaction defaults to enabled.",
+    },
+    state: deterministicState,
+    runtime: {
+      scan_health: runtime.scanHealth,
+      capability_gaps: runtime.capabilityGaps,
+      observation_counts: classObservationCounts(
+        deterministicState.snapshots[0]?.report.observations ?? [],
+      ),
+      notice: runtime.notice,
+      baseline_network_statement:
+        "Dock Audit baseline scan/check/export/backup flows do not require network or cloud telemetry.",
+    },
+  };
+
+  const payload = redactForExport(payloadBase, includeIdentifyingFields);
+  const json = stableStringify(payload);
+
+  const markdownLines = [
+    "# Dock Audit support report",
+    "",
+    `- Schema version: ${BACKUP_ARCHIVE_VERSION}`,
+    `- Identifying fields included: ${includeIdentifyingFields ? "yes" : "no"}`,
+    `- Profiles: ${deterministicState.profiles.length}`,
+    `- Snapshots: ${deterministicState.snapshots.length}`,
+    `- Timeline events: ${deterministicState.timeline_events.length}`,
+    "",
+    "## Scan health",
+    "",
+    "| Class | Health |",
+    "| --- | --- |",
+    ...ALL_CLASSES.map(
+      (deviceClass) =>
+        `| ${markdownEscape(humanizeClass(deviceClass))} | ${markdownEscape(runtime.scanHealth[deviceClass])} |`,
+    ),
+    "",
+    "## Capability gaps",
+    "",
+    runtime.capabilityGaps.length === 0
+      ? "None."
+      : runtime.capabilityGaps
+          .map(
+            (gap) =>
+              `- ${humanizeClass(gap.class)} / ${gap.capability}: ${gap.message}`,
+          )
+          .join("\n"),
+    "",
+    "## Full field preview (deterministic JSON)",
+    "",
+    "```json",
+    json,
+    "```",
+  ];
+
+  return {
+    payload,
+    json,
+    markdown: markdownLines.join("\n"),
+  };
 }
 
 function expectationFromObservation(
@@ -637,7 +1172,7 @@ export function createDockAuditApp(
   const now = dependencies.now ?? (() => new Date());
   const progressIntervalMs = dependencies.progressIntervalMs ?? 150;
 
-  const persisted = storage.load();
+  const persisted = pruneByRetention(storage.load(), now());
   const state: State = {
     profileNameDraft: "",
     captureDrafts: [],
@@ -645,6 +1180,8 @@ export function createDockAuditApp(
     selectedProfileId: persisted.selected_profile_id,
     profileEditDraft: null,
     snapshots: persisted.snapshots,
+    timelineEvents: persisted.timeline_events,
+    settings: persisted.settings,
     observations: [],
     scanHealth: clone(bootstrapScanHealth),
     capabilityGaps: [],
@@ -655,6 +1192,11 @@ export function createDockAuditApp(
     checkStatus: "",
     result: null,
     notice: "",
+    includeIdentifyingExportFields: false,
+    exportPreviewJson: "",
+    exportPreviewMarkdown: "",
+    restoreDraft: "",
+    restorePreview: null,
   };
 
   if (
@@ -681,12 +1223,118 @@ export function createDockAuditApp(
 
   setProfileEditDraftFromSelection();
 
-  function persistState(): void {
-    storage.save({
+  function currentPersistedState(): PersistedState {
+    return {
       selected_profile_id: state.selectedProfileId,
       profiles: state.profiles,
       snapshots: state.snapshots,
+      timeline_events: state.timelineEvents,
+      settings: state.settings,
+    };
+  }
+
+  function applyRetentionToLiveState(): void {
+    const pruned = pruneByRetention(currentPersistedState(), now());
+    state.snapshots = pruned.snapshots;
+    state.timelineEvents = pruned.timeline_events;
+    state.settings = pruned.settings;
+  }
+
+  function persistState(): void {
+    applyRetentionToLiveState();
+    storage.save(currentPersistedState());
+  }
+
+  function addTimelineEvent(
+    category: TimelineEvent["category"],
+    message: string,
+    details: Record<string, string> = {},
+  ): void {
+    if (!state.settings.timeline_capture_enabled) {
+      return;
+    }
+    const event: TimelineEvent = {
+      id: randomId("timeline"),
+      captured_at: now().toISOString(),
+      category,
+      message,
+      details,
+    };
+    state.timelineEvents.unshift(event);
+    applyRetentionToLiveState();
+  }
+
+  function captureClassDeltaTimeline(
+    previousObservations: Observation[],
+    nextObservations: Observation[],
+  ): void {
+    if (!state.settings.timeline_capture_enabled) {
+      return;
+    }
+
+    const before = classObservationCounts(previousObservations);
+    const after = classObservationCounts(nextObservations);
+    ALL_CLASSES.forEach((deviceClass) => {
+      const delta = after[deviceClass] - before[deviceClass];
+      if (delta === 0) {
+        return;
+      }
+      addTimelineEvent(
+        "class_delta",
+        `${humanizeClass(deviceClass)} count changed by ${delta > 0 ? "+" : ""}${delta}.`,
+        {
+          class: deviceClass,
+          previous_count: String(before[deviceClass]),
+          current_count: String(after[deviceClass]),
+        },
+      );
     });
+  }
+
+  function rebuildExportPreviews(): void {
+    const exportState = currentPersistedState();
+    const report = createSupportReport(
+      exportState,
+      {
+        scanHealth: state.scanHealth,
+        capabilityGaps: state.capabilityGaps,
+        notice: state.notice,
+      },
+      state.includeIdentifyingExportFields,
+    );
+    state.exportPreviewJson = report.json;
+    state.exportPreviewMarkdown = report.markdown;
+  }
+
+  function downloadTextFile(filename: string, content: string): void {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function applyBackupArchive(archive: BackupArchive): void {
+    const nextState: PersistedState = pruneByRetention(
+      {
+        selected_profile_id: archive.selected_profile_id,
+        profiles: clone(archive.profiles),
+        snapshots: clone(archive.snapshots),
+        timeline_events: clone(archive.timeline_events),
+        settings: clone(archive.settings),
+      },
+      now(),
+    );
+
+    state.selectedProfileId = nextState.selected_profile_id;
+    state.profiles = nextState.profiles;
+    state.snapshots = nextState.snapshots;
+    state.timelineEvents = nextState.timeline_events;
+    state.settings = nextState.settings;
+    setProfileEditDraftFromSelection();
+    persistState();
   }
 
   function render(): void {
@@ -937,9 +1585,18 @@ export function createDockAuditApp(
       state.profiles.unshift(profile);
       state.selectedProfileId = profile.id;
       state.profileNameDraft = "";
+      addTimelineEvent(
+        "operator",
+        "Saved profile from captured observations.",
+        {
+          profile_id: profile.id,
+          expectation_count: String(profile.expectations.length),
+        },
+      );
       state.notice = `Saved profile “${profile.name}” with ${profile.expectations.length} expectations.`;
       setProfileEditDraftFromSelection();
       persistState();
+      rebuildExportPreviews();
       render();
     });
 
@@ -1072,10 +1729,15 @@ export function createDockAuditApp(
           next.version = (state.profiles[index]?.version ?? 0) + 1;
           next.updated_at = now().toISOString();
           state.profiles[index] = next;
+          addTimelineEvent("operator", "Saved profile edits.", {
+            profile_id: next.id,
+            profile_version: String(next.version),
+          });
           state.notice =
             "Saved profile edits. Historical snapshots keep the profile version captured at check time.";
           setProfileEditDraftFromSelection();
           persistState();
+          rebuildExportPreviews();
           render();
         });
 
@@ -1093,11 +1755,22 @@ export function createDockAuditApp(
           state.profiles = state.profiles.filter(
             (profile) => profile.id !== deleting,
           );
+          state.snapshots = state.snapshots.filter(
+            (snapshot) => snapshot.profile_id !== deleting,
+          );
           state.selectedProfileId = state.profiles[0]?.id ?? null;
           setProfileEditDraftFromSelection();
+          addTimelineEvent(
+            "operator",
+            "Deleted profile and linked snapshots.",
+            {
+              profile_id: deleting,
+            },
+          );
           state.notice =
-            "Deleted selected profile. Existing snapshots were preserved without rewrite.";
+            "Deleted selected profile and removed linked snapshots from local history.";
           persistState();
+          rebuildExportPreviews();
           render();
         });
 
@@ -1219,7 +1892,98 @@ export function createDockAuditApp(
     const snapshotSection = document.createElement("section");
     snapshotSection.className = "workflow-section";
     snapshotSection.append(
-      textElement("h2", `Snapshots (${state.snapshots.length})`),
+      textElement(
+        "h2",
+        `4) Snapshots and retention (${state.snapshots.length})`,
+      ),
+    );
+
+    const retentionGrid = document.createElement("div");
+    retentionGrid.className = "retention-grid";
+
+    const snapshotRetentionLabel = textElement(
+      "label",
+      "Snapshot retention limit",
+      "field-label",
+    );
+    snapshotRetentionLabel.setAttribute("for", "snapshot-retention-limit");
+    const snapshotRetentionInput = document.createElement("input");
+    snapshotRetentionInput.id = "snapshot-retention-limit";
+    snapshotRetentionInput.className = "text-input compact-input";
+    snapshotRetentionInput.type = "number";
+    snapshotRetentionInput.min = "1";
+    snapshotRetentionInput.max = "200";
+    snapshotRetentionInput.value = String(state.settings.snapshot_limit);
+
+    const timelineRetentionLabel = textElement(
+      "label",
+      "Timeline event limit",
+      "field-label",
+    );
+    timelineRetentionLabel.setAttribute("for", "timeline-retention-limit");
+    const timelineRetentionInput = document.createElement("input");
+    timelineRetentionInput.id = "timeline-retention-limit";
+    timelineRetentionInput.className = "text-input compact-input";
+    timelineRetentionInput.type = "number";
+    timelineRetentionInput.min = "1";
+    timelineRetentionInput.max = "2000";
+    timelineRetentionInput.value = String(state.settings.timeline_limit);
+
+    const timelineDaysLabel = textElement(
+      "label",
+      "Timeline retention days",
+      "field-label",
+    );
+    timelineDaysLabel.setAttribute("for", "timeline-retention-days");
+    const timelineDaysInput = document.createElement("input");
+    timelineDaysInput.id = "timeline-retention-days";
+    timelineDaysInput.className = "text-input compact-input";
+    timelineDaysInput.type = "number";
+    timelineDaysInput.min = "1";
+    timelineDaysInput.max = "365";
+    timelineDaysInput.value = String(state.settings.timeline_days);
+
+    const saveRetentionButton = textElement(
+      "button",
+      "Save retention settings",
+      "secondary-button",
+    );
+    saveRetentionButton.type = "button";
+    saveRetentionButton.addEventListener("click", () => {
+      state.settings = normalizeSettings({
+        ...state.settings,
+        snapshot_limit: Number(snapshotRetentionInput.value),
+        timeline_limit: Number(timelineRetentionInput.value),
+        timeline_days: Number(timelineDaysInput.value),
+      });
+      addTimelineEvent("operator", "Retention settings updated.", {
+        snapshot_limit: String(state.settings.snapshot_limit),
+        timeline_limit: String(state.settings.timeline_limit),
+        timeline_days: String(state.settings.timeline_days),
+      });
+      state.notice =
+        "Saved retention settings. Future snapshots and timeline events are pruned deterministically.";
+      persistState();
+      rebuildExportPreviews();
+      render();
+    });
+
+    retentionGrid.append(
+      snapshotRetentionLabel,
+      snapshotRetentionInput,
+      timelineRetentionLabel,
+      timelineRetentionInput,
+      timelineDaysLabel,
+      timelineDaysInput,
+      saveRetentionButton,
+    );
+    snapshotSection.append(
+      textElement(
+        "p",
+        "Configure local retention and use targeted deletion controls below.",
+        "subtle",
+      ),
+      retentionGrid,
     );
 
     if (state.snapshots.length === 0) {
@@ -1232,9 +1996,29 @@ export function createDockAuditApp(
     } else {
       const list = document.createElement("ul");
       list.className = "snapshot-list";
-      state.snapshots.slice(0, 8).forEach((snapshot) => {
+      state.snapshots.forEach((snapshot) => {
         const item = document.createElement("li");
         item.className = "snapshot-item";
+        const deleteSnapshotButton = textElement(
+          "button",
+          "Delete snapshot",
+          "danger-button",
+        );
+        deleteSnapshotButton.type = "button";
+        deleteSnapshotButton.setAttribute(
+          "aria-label",
+          `Delete snapshot ${snapshot.id}`,
+        );
+        deleteSnapshotButton.addEventListener("click", () => {
+          state.snapshots = state.snapshots.filter(
+            (entry) => entry.id !== snapshot.id,
+          );
+          state.notice = "Deleted snapshot from local history.";
+          persistState();
+          rebuildExportPreviews();
+          render();
+        });
+
         item.append(
           textElement(
             "strong",
@@ -1251,6 +2035,7 @@ export function createDockAuditApp(
               )
               .join("; ")}`,
           ),
+          deleteSnapshotButton,
         );
         list.append(item);
       });
@@ -1258,6 +2043,323 @@ export function createDockAuditApp(
     }
 
     card.append(snapshotSection);
+
+    const timelineSection = document.createElement("section");
+    timelineSection.className = "workflow-section";
+    timelineSection.append(
+      textElement("h2", "5) Private app-session timeline"),
+    );
+
+    const timelineState = state.settings.timeline_capture_enabled
+      ? "Recording enabled"
+      : "Recording disabled";
+    timelineSection.append(
+      textElement(
+        "p",
+        `${timelineState}. Events are captured only while the app is open and capture is enabled.`,
+        "subtle",
+      ),
+    );
+
+    const timelineActions = document.createElement("div");
+    timelineActions.className = "inline-actions";
+
+    const toggleTimeline = textElement(
+      "button",
+      state.settings.timeline_capture_enabled
+        ? "Disable timeline capture"
+        : "Enable timeline capture",
+      "secondary-button",
+    );
+    toggleTimeline.type = "button";
+    toggleTimeline.addEventListener("click", () => {
+      state.settings.timeline_capture_enabled =
+        !state.settings.timeline_capture_enabled;
+      if (state.settings.timeline_capture_enabled) {
+        addTimelineEvent("operator", "Timeline capture enabled by user.");
+      }
+      state.notice = state.settings.timeline_capture_enabled
+        ? "Timeline capture enabled for this app session."
+        : "Timeline capture disabled. Existing timeline remains local.";
+      persistState();
+      rebuildExportPreviews();
+      render();
+    });
+
+    const clearTimeline = textElement(
+      "button",
+      "Delete timeline only",
+      "danger-button",
+    );
+    clearTimeline.type = "button";
+    clearTimeline.addEventListener("click", () => {
+      state.timelineEvents = [];
+      state.notice =
+        "Cleared timeline events. Profiles and snapshots were preserved.";
+      persistState();
+      rebuildExportPreviews();
+      render();
+    });
+
+    timelineActions.append(toggleTimeline, clearTimeline);
+    timelineSection.append(timelineActions);
+
+    if (state.timelineEvents.length === 0) {
+      timelineSection.append(
+        textElement(
+          "p",
+          "No timeline events captured in this session yet.",
+          "subtle",
+        ),
+      );
+    } else {
+      const timelineList = document.createElement("ul");
+      timelineList.className = "snapshot-list";
+      state.timelineEvents.forEach((event) => {
+        const item = document.createElement("li");
+        item.className = "snapshot-item";
+        const details = Object.entries(event.details)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(" · ");
+        item.append(
+          textElement(
+            "strong",
+            `${new Date(event.captured_at).toLocaleString()} · ${event.message}`,
+          ),
+          textElement(
+            "p",
+            `Category: ${event.category}${details.length > 0 ? ` · ${details}` : ""}`,
+            "subtle",
+          ),
+        );
+        timelineList.append(item);
+      });
+      timelineSection.append(timelineList);
+    }
+
+    card.append(timelineSection);
+
+    rebuildExportPreviews();
+
+    const exportSection = document.createElement("section");
+    exportSection.className = "workflow-section";
+    exportSection.append(
+      textElement("h2", "6) Redacted support export and backup/restore"),
+    );
+
+    const includeIdentityLabel = document.createElement("label");
+    includeIdentityLabel.className = "checkbox-label";
+    const includeIdentityInput = document.createElement("input");
+    includeIdentityInput.type = "checkbox";
+    includeIdentityInput.checked = state.includeIdentifyingExportFields;
+    includeIdentityInput.addEventListener("change", () => {
+      state.includeIdentifyingExportFields = includeIdentityInput.checked;
+      rebuildExportPreviews();
+      render();
+    });
+    includeIdentityLabel.append(
+      includeIdentityInput,
+      document.createTextNode(
+        "Include potentially re-identifying fields in this export",
+      ),
+    );
+
+    const exportWarning = state.includeIdentifyingExportFields
+      ? "Warning: you enabled potentially identifying fields for this export. Review before sharing."
+      : "Default export redacts serials, MAC addresses, machine/user names, local paths, and high-entropy identifiers.";
+    exportSection.append(textElement("p", exportWarning, "subtle"));
+
+    const exportActions = document.createElement("div");
+    exportActions.className = "inline-actions";
+
+    const downloadJsonButton = textElement(
+      "button",
+      "Download redacted JSON report",
+      "primary-button",
+    );
+    downloadJsonButton.type = "button";
+    downloadJsonButton.addEventListener("click", () => {
+      rebuildExportPreviews();
+      downloadTextFile(
+        "dock-audit-support-report.json",
+        state.exportPreviewJson,
+      );
+      state.notice =
+        "Downloaded support JSON report from the local app session.";
+      render();
+    });
+
+    const downloadMarkdownButton = textElement(
+      "button",
+      "Download Markdown report",
+      "secondary-button",
+    );
+    downloadMarkdownButton.type = "button";
+    downloadMarkdownButton.addEventListener("click", () => {
+      rebuildExportPreviews();
+      downloadTextFile(
+        "dock-audit-support-report.md",
+        state.exportPreviewMarkdown,
+      );
+      state.notice =
+        "Downloaded support Markdown report from the local app session.";
+      render();
+    });
+
+    const downloadBackupButton = textElement(
+      "button",
+      "Download versioned backup",
+      "secondary-button",
+    );
+    downloadBackupButton.type = "button";
+    downloadBackupButton.addEventListener("click", () => {
+      const backup = createBackupArchive(currentPersistedState());
+      downloadTextFile("dock-audit-backup-v2.json", stableStringify(backup));
+      state.notice = "Downloaded versioned local backup archive.";
+      render();
+    });
+
+    exportActions.append(
+      downloadJsonButton,
+      downloadMarkdownButton,
+      downloadBackupButton,
+    );
+    exportSection.append(includeIdentityLabel, exportActions);
+
+    const previewLabel = textElement("h3", "Export preview (all fields)");
+    const jsonPreview = document.createElement("pre");
+    jsonPreview.className = "export-preview";
+    jsonPreview.textContent = state.exportPreviewJson;
+
+    const markdownPreview = document.createElement("pre");
+    markdownPreview.className = "export-preview";
+    markdownPreview.textContent = state.exportPreviewMarkdown;
+
+    exportSection.append(
+      previewLabel,
+      textElement("h4", "JSON"),
+      jsonPreview,
+      textElement("h4", "Markdown"),
+      markdownPreview,
+    );
+
+    const restoreHeading = textElement("h3", "Restore from versioned backup");
+    const restoreTextareaLabel = textElement(
+      "label",
+      "Paste backup JSON",
+      "field-label",
+    );
+    restoreTextareaLabel.setAttribute("for", "restore-backup-json");
+    const restoreTextarea = document.createElement("textarea");
+    restoreTextarea.id = "restore-backup-json";
+    restoreTextarea.className = "text-input restore-input";
+    restoreTextarea.value = state.restoreDraft;
+    restoreTextarea.addEventListener("input", () => {
+      state.restoreDraft = restoreTextarea.value;
+    });
+
+    const restoreActions = document.createElement("div");
+    restoreActions.className = "inline-actions";
+
+    const previewRestoreButton = textElement(
+      "button",
+      "Preview restore conflicts",
+      "secondary-button",
+    );
+    previewRestoreButton.type = "button";
+    previewRestoreButton.addEventListener("click", () => {
+      try {
+        const archive = parseBackupArchive(state.restoreDraft);
+        state.restorePreview = previewRestoreConflicts(
+          currentPersistedState(),
+          archive,
+        );
+        state.notice =
+          "Restore preview is ready. Review conflict counts before applying.";
+      } catch (error) {
+        state.restorePreview = null;
+        state.notice =
+          error instanceof Error ? error.message : "Restore preview failed.";
+      }
+      render();
+    });
+
+    const applyRestoreButton = textElement(
+      "button",
+      "Apply restore (atomic)",
+      "danger-button",
+    );
+    applyRestoreButton.type = "button";
+    applyRestoreButton.addEventListener("click", () => {
+      const before = stableStringify(currentPersistedState());
+      try {
+        const archive = parseBackupArchive(state.restoreDraft);
+        state.restorePreview = previewRestoreConflicts(
+          currentPersistedState(),
+          archive,
+        );
+        applyBackupArchive(archive);
+        state.notice =
+          "Backup restore applied atomically. Local profiles, snapshots, and timeline were replaced in one commit.";
+        rebuildExportPreviews();
+      } catch (error) {
+        const after = stableStringify(currentPersistedState());
+        if (before !== after) {
+          throw new Error("Atomic restore contract violated in-memory state.");
+        }
+        state.notice =
+          error instanceof Error ? error.message : "Backup restore failed.";
+      }
+      render();
+    });
+
+    const eraseAllButton = textElement(
+      "button",
+      "Erase all local data",
+      "danger-button",
+    );
+    eraseAllButton.type = "button";
+    eraseAllButton.addEventListener("click", () => {
+      state.profiles = [];
+      state.snapshots = [];
+      state.timelineEvents = [];
+      state.selectedProfileId = null;
+      state.profileEditDraft = null;
+      state.result = null;
+      state.settings = {
+        ...defaultSettings(),
+        timeline_capture_enabled: false,
+      };
+      state.notice =
+        "Erased all local profiles, snapshots, and timeline events. Future capture is disabled until re-enabled.";
+      persistState();
+      rebuildExportPreviews();
+      render();
+    });
+
+    restoreActions.append(
+      previewRestoreButton,
+      applyRestoreButton,
+      eraseAllButton,
+    );
+    exportSection.append(
+      restoreHeading,
+      restoreTextareaLabel,
+      restoreTextarea,
+      restoreActions,
+    );
+
+    if (state.restorePreview) {
+      exportSection.append(
+        textElement(
+          "p",
+          `Conflict preview: profiles overwritten ${state.restorePreview.profiles_overwritten}, profiles added ${state.restorePreview.profiles_added}, snapshots overwritten ${state.restorePreview.snapshots_overwritten}, snapshots added ${state.restorePreview.snapshots_added}, current timeline entries replaced ${state.restorePreview.timeline_events_replaced}.`,
+          "subtle",
+        ),
+      );
+    }
+
+    card.append(exportSection);
 
     const noticeLine = textElement("p", state.notice, "privacy-note");
     noticeLine.setAttribute("role", "status");
@@ -1284,6 +2386,8 @@ export function createDockAuditApp(
   }
 
   async function refreshInventory(): Promise<void> {
+    const previousObservations = clone(state.observations);
+    addTimelineEvent("scan_started", "Inventory scan started.");
     state.loadingInventory = true;
     state.inventoryError = null;
     render();
@@ -1293,6 +2397,10 @@ export function createDockAuditApp(
       state.observations = clone(report.observations);
       state.scanHealth = normalizeScanHealth(report.scan_health);
       state.capabilityGaps = clone(report.capability_gaps);
+      captureClassDeltaTimeline(previousObservations, state.observations);
+      addTimelineEvent("scan_completed", "Inventory scan completed.", {
+        observation_count: String(state.observations.length),
+      });
       replaceCaptureDraftsFromObservations();
       state.notice =
         "Inventory refreshed. Review observations and choose expected devices before saving a profile.";
@@ -1304,8 +2412,14 @@ export function createDockAuditApp(
       state.inventoryError =
         "The native inventory scan did not complete. Dock Audit will not claim missing devices from this failed scan.";
       state.notice = state.inventoryError;
+      addTimelineEvent(
+        "scan_failed",
+        "Inventory scan failed before completion.",
+      );
     } finally {
       state.loadingInventory = false;
+      persistState();
+      rebuildExportPreviews();
       render();
     }
   }
@@ -1345,11 +2459,16 @@ export function createDockAuditApp(
       return;
     }
 
+    const previousObservations = clone(state.observations);
     const checkId = activeCheckId + 1;
     activeCheckId = checkId;
     state.runningCheck = true;
     state.checkProgress = 8;
     state.checkStatus = "Scanning inventory for selected profile…";
+    addTimelineEvent("scan_started", "Desk check inventory scan started.", {
+      profile_id: profile.id,
+      profile_name: profile.name,
+    });
     render();
 
     if (progressTimer) {
@@ -1369,6 +2488,10 @@ export function createDockAuditApp(
       if (checkId !== activeCheckId) {
         return;
       }
+      state.observations = clone(report.observations);
+      state.scanHealth = normalizeScanHealth(report.scan_health);
+      state.capabilityGaps = clone(report.capability_gaps);
+      captureClassDeltaTimeline(previousObservations, state.observations);
       state.checkStatus = "Comparing expected profile against observations…";
       state.checkProgress = Math.max(state.checkProgress, 92);
       render();
@@ -1388,7 +2511,14 @@ export function createDockAuditApp(
       state.result = grouped;
       const snapshot = createSnapshot(profile, report, grouped.comparison, now);
       state.snapshots.unshift(snapshot);
-      state.snapshots = state.snapshots.slice(0, 30);
+      addTimelineEvent("scan_completed", "Desk check comparison completed.", {
+        present: String(grouped.groups.present.length),
+        changed: String(grouped.groups.changed.length),
+        missing: String(grouped.groups.missing.length),
+        unexpected: String(grouped.groups.unexpected.length),
+        ambiguous: String(grouped.groups.ambiguous.length),
+        unknown: String(grouped.groups.unknown.length),
+      });
       persistState();
 
       state.checkStatus = `Check complete. ${summaryLine(grouped)}`;
@@ -1400,6 +2530,10 @@ export function createDockAuditApp(
       state.checkStatus =
         "Check desk failed before a complete scan. Dock Audit kept prior results and did not conclude any device was missing.";
       state.notice = state.checkStatus;
+      addTimelineEvent(
+        "scan_failed",
+        "Desk check failed before completing comparison.",
+      );
     } finally {
       if (checkId === activeCheckId) {
         state.runningCheck = false;
@@ -1409,6 +2543,8 @@ export function createDockAuditApp(
         clearInterval(progressTimer);
         progressTimer = null;
       }
+      persistState();
+      rebuildExportPreviews();
       render();
     }
   }

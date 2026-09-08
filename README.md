@@ -33,8 +33,8 @@ A partly connected dock can look healthy while one monitor, USB device, audio en
 2. Review the discovered devices and explicitly choose which ones belong in a named desk profile.
 3. On a later connection, select that profile and run **Check desk**.
 4. Inspect non-color-only status rows with plain-language reasons and identity confidence.
-5. Optionally save the snapshot locally or export a redacted support report.
-6. Delete profiles, snapshots, or all app data at any time.
+5. Optionally save the snapshot locally, review a full-field privacy preview, and export a redacted support report.
+6. Adjust retention limits, delete individual profiles/snapshots/timeline entries, or restore from a versioned backup after reviewing conflict counts.
 
 Dock Audit never enables, disables, resets, or reconfigures hardware. It does not promise to identify the physical cause of a failure; it reports observable differences and safe next checks.
 

@@ -138,6 +138,36 @@ h4 {
   color: inherit;
 }
 
+.retention-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  align-items: end;
+}
+
+.compact-input {
+  width: 100%;
+}
+
+.restore-input {
+  width: min(100%, 58rem);
+  min-height: 8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.export-preview {
+  margin: 0.55rem 0;
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid #b9cbc5;
+  border-radius: 0.5rem;
+  padding: 0.7rem;
+  background: #fff;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .primary-button,
 .secondary-button,
 .danger-button {
@@ -232,7 +262,7 @@ progress {
   font-size: 0.95rem;
 }
 
-:where(button, input, select):focus-visible {
+:where(button, input, select, textarea):focus-visible {
   outline: 3px solid #996515;
   outline-offset: 2px;
 }
@@ -271,7 +301,8 @@ progress {
   .observation-item,
   .expectation-item,
   .snapshot-item,
-  .result-item {
+  .result-item,
+  .export-preview {
     border-color: #4a645c;
     background: #20302b;
     color: inherit;

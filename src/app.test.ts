@@ -12,8 +12,14 @@ import {
   type InventoryReport,
   type Observation,
   compareProfileFallback,
+  createBackupArchive,
   createDockAuditApp,
   createMemoryStorage,
+  createSupportReport,
+  parseBackupArchive,
+  previewRestoreConflicts,
+  redactForExport,
+  stableStringify,
 } from "./app";
 
 function clone<T>(value: T): T {
@@ -82,7 +88,81 @@ function setInputValue(input: HTMLInputElement, value: string): void {
   fireEvent.input(input);
 }
 
-describe("Dock Audit issue #5 workflow", () => {
+function sampleState(
+  overrides: Partial<Parameters<typeof createBackupArchive>[0]> = {},
+): Parameters<typeof createBackupArchive>[0] {
+  const profile = {
+    id: "profile-1",
+    name: "Desk profile",
+    expectations: [
+      {
+        id: "expectation-1",
+        class: "usb" as const,
+        alias: "Keyboard",
+        required: true,
+        expected_fields: {
+          serial: "SERIAL-ABCD-1234",
+          mount_path: "/home/tester/dev/input0",
+        },
+        identity_hashes: {
+          serial_hash: "a1b2c3d4e5f6g7h8i9j0",
+        },
+        friendly_name: "Desk Keyboard",
+      },
+    ],
+    version: 1,
+    updated_at: "2026-09-07T00:00:00.000Z",
+  };
+
+  const scan = report([
+    observation("usb", "Desk Keyboard", {
+      serial_hash: "a1b2c3d4e5f6g7h8i9j0",
+    }),
+  ]);
+  const comparison = compareProfileFallback(profile, scan);
+  const snapshot = {
+    id: "snapshot-1",
+    profile_id: profile.id,
+    profile_version: profile.version,
+    profile_view: {
+      name: profile.name,
+      expectations: [
+        { alias: "Keyboard", class: "usb" as const, required: true },
+      ],
+    },
+    captured_at: "2026-09-07T00:00:00.000Z",
+    report: scan,
+    comparison,
+  };
+
+  return {
+    selected_profile_id: profile.id,
+    profiles: [profile],
+    snapshots: [snapshot],
+    timeline_events: [
+      {
+        id: "timeline-1",
+        captured_at: "2026-09-07T00:00:00.000Z",
+        category: "operator" as const,
+        message: "seed event",
+        details: {
+          machine_name: "workstation-01",
+          mac: "aa:bb:cc:dd:ee:ff",
+        },
+      },
+    ],
+    settings: {
+      snapshot_limit: 30,
+      timeline_limit: 200,
+      timeline_days: 14,
+      timeline_capture_enabled: false,
+      include_identifying_exports: false,
+    },
+    ...overrides,
+  };
+}
+
+describe("Dock Audit issue #6 private timeline + export workflow", () => {
   afterEach(() => {
     document.body.replaceChildren();
   });
@@ -275,7 +355,7 @@ describe("Dock Audit issue #5 workflow", () => {
     expect(root.textContent).toContain("Missing 1 (0 required)");
   });
 
-  it("preserves historical snapshots across profile edits and deletion", async () => {
+  it("deletes linked snapshots when deleting a profile", async () => {
     const root = document.createElement("main");
     document.body.append(root);
 
@@ -311,26 +391,277 @@ describe("Dock Audit issue #5 workflow", () => {
 
     fireEvent.click(getByRole(root, "button", { name: "Check desk" }));
     await waitFor(() => {
-      expect(root.textContent).toContain("Snapshots (1)");
+      expect(root.textContent).toContain("Snapshots and retention (1)");
     });
-
-    setInputValue(
-      root.querySelector<HTMLInputElement>("#edit-alias-0")!,
-      "Keyboard v2",
-    );
-    fireEvent.click(getByRole(root, "button", { name: "Save profile edits" }));
-
-    expect(root.textContent).toContain("Keyboard v1");
 
     fireEvent.click(
       getByRole(root, "button", { name: "Delete selected profile" }),
     );
 
     expect(root.textContent).toContain(
-      "Deleted selected profile. Existing snapshots were preserved without rewrite.",
+      "Deleted selected profile and removed linked snapshots from local history.",
     );
-    expect(root.textContent).toContain("Snapshots (1)");
-    expect(root.textContent).toContain("Keyboard v1");
+    expect(root.textContent).toContain("Snapshots and retention (0)");
+  });
+
+  it("records scan timeline events and class deltas when timeline capture is enabled", async () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+
+    const app = createDockAuditApp(root, {
+      backend: backendFromScans([
+        report([observation("usb", "Keyboard")]),
+        report([
+          observation("usb", "Keyboard"),
+          observation("display", "Monitor"),
+        ]),
+      ]),
+      storage: createMemoryStorage(),
+      progressIntervalMs: 1,
+    });
+
+    await app.waitForIdle();
+
+    fireEvent.click(
+      getByRole(root, "button", { name: "Enable timeline capture" }),
+    );
+    fireEvent.click(getByRole(root, "button", { name: "Re-scan inventory" }));
+
+    await waitFor(() => {
+      expect(root.textContent).toContain("Inventory scan completed.");
+    });
+
+    expect(root.textContent).toContain("count changed by +1");
+    expect(root.textContent).toContain("Private app-session timeline");
+  });
+
+  it("prunes snapshots based on retention settings", async () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+
+    const keyboard = observation("usb", "Desk Keyboard", {
+      serial_hash: "hash-kbd",
+    });
+
+    const app = createDockAuditApp(root, {
+      backend: backendFromScans([
+        report([keyboard]),
+        report([keyboard]),
+        report([keyboard]),
+      ]),
+      storage: createMemoryStorage(),
+      progressIntervalMs: 1,
+    });
+
+    await app.waitForIdle();
+
+    setInputValue(
+      getByLabelText(root, "Profile name") as HTMLInputElement,
+      "Retention profile",
+    );
+    fireEvent.click(getByLabelText(root, "Desk Keyboard (usb)"));
+    fireEvent.click(getByRole(root, "button", { name: "Save profile" }));
+
+    fireEvent.click(getByRole(root, "button", { name: "Check desk" }));
+    await waitFor(() => {
+      expect(root.textContent).toContain("Snapshots and retention (1)");
+    });
+
+    fireEvent.click(getByRole(root, "button", { name: "Check desk" }));
+    await waitFor(() => {
+      expect(root.textContent).toContain("Snapshots and retention (2)");
+    });
+
+    setInputValue(
+      getByLabelText(root, "Snapshot retention limit") as HTMLInputElement,
+      "1",
+    );
+    fireEvent.click(
+      getByRole(root, "button", { name: "Save retention settings" }),
+    );
+
+    expect(root.textContent).toContain("Snapshots and retention (1)");
+  });
+
+  it("creates redacted support reports by default with optional identifying opt-in", () => {
+    const state = sampleState();
+    const runtime = {
+      scanHealth: {
+        usb: "complete" as const,
+        display: "complete" as const,
+        audio_input: "complete" as const,
+        audio_output: "complete" as const,
+        network: "complete" as const,
+      },
+      capabilityGaps: [],
+      notice: "ready",
+    };
+    const redacted = createSupportReport(state, runtime, false);
+
+    expect(redacted.json).toContain("[REDACTED]");
+    expect(redacted.json).not.toContain("SERIAL-ABCD-1234");
+    expect(redacted.json).not.toContain("/home/tester/dev/input0");
+    expect(redacted.json).not.toContain("aa:bb:cc:dd:ee:ff");
+
+    const full = createSupportReport(state, runtime, true);
+
+    expect(full.json).toContain("SERIAL-ABCD-1234");
+    expect(full.json).toContain("/home/tester/dev/input0");
+    expect(full.json).toContain("aa:bb:cc:dd:ee:ff");
+  });
+
+  it("supports versioned backup roundtrip and conflict previews", () => {
+    const state = sampleState();
+    const backup = createBackupArchive(state);
+    const roundtrip = parseBackupArchive(JSON.stringify(backup));
+
+    expect(stableStringify(roundtrip)).toEqual(stableStringify(backup));
+
+    const baseProfile = state.profiles[0];
+    expect(baseProfile).toBeDefined();
+    const incoming = createBackupArchive(
+      sampleState({
+        profiles: [
+          baseProfile!,
+          {
+            ...baseProfile!,
+            id: "profile-2",
+            name: "Added profile",
+          },
+        ],
+      }),
+    );
+
+    const preview = previewRestoreConflicts(state, incoming);
+    expect(preview.profiles_overwritten).toBe(1);
+    expect(preview.profiles_added).toBe(1);
+    expect(preview.snapshots_overwritten).toBe(1);
+    expect(preview.timeline_events_replaced).toBe(state.timeline_events.length);
+  });
+
+  it("rejects malformed backup payloads", () => {
+    expect(() => parseBackupArchive("{not json")).toThrow(
+      "Backup JSON is malformed.",
+    );
+
+    expect(() =>
+      parseBackupArchive(
+        JSON.stringify({
+          version: 1,
+          selected_profile_id: null,
+          profiles: [],
+          snapshots: [],
+          timeline_events: [],
+          settings: {
+            snapshot_limit: 30,
+            timeline_limit: 200,
+            timeline_days: 14,
+            timeline_capture_enabled: false,
+            include_identifying_exports: false,
+          },
+        }),
+      ),
+    ).toThrow("Unsupported backup version");
+  });
+
+  it("keeps restore atomic when malformed input is applied", async () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+
+    const seeded = sampleState();
+    const storage = createMemoryStorage(seeded);
+    const app = createDockAuditApp(root, {
+      backend: backendFromScans([report([observation("usb", "Keyboard")])]),
+      storage,
+      progressIntervalMs: 1,
+    });
+
+    await app.waitForIdle();
+    expect(root.textContent).toContain("Selected profile");
+    expect(root.textContent).toContain("Snapshots and retention (1)");
+
+    setInputValue(
+      getByLabelText(root, "Paste backup JSON") as HTMLInputElement,
+      "{ definitely-not-json",
+    );
+    fireEvent.click(
+      getByRole(root, "button", { name: "Apply restore (atomic)" }),
+    );
+
+    expect(root.textContent).toContain("Backup JSON is malformed.");
+    expect(root.textContent).toContain("Selected profile");
+    expect(root.textContent).toContain("Snapshots and retention (1)");
+  });
+
+  it("treats script-like device labels as text and not executable markup", async () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+
+    const riskyLabel = "<script>alert('xss')</script> Dock";
+    const app = createDockAuditApp(root, {
+      backend: backendFromScans([report([observation("usb", riskyLabel)])]),
+      storage: createMemoryStorage(),
+      progressIntervalMs: 1,
+    });
+
+    await app.waitForIdle();
+
+    expect(root.textContent).toContain(`${riskyLabel} (usb)`);
+    expect(root.innerHTML).not.toContain("<script>alert('xss')</script>");
+  });
+
+  it("redaction is idempotent for structured payloads", () => {
+    const payload = {
+      nested: {
+        serial: "SERIAL-123",
+        owner: "alice",
+        path: "/home/alice/dev/input0",
+      },
+      values: ["aa:bb:cc:dd:ee:ff", "normal-text"],
+    };
+
+    const once = redactForExport(payload, false);
+    const twice = redactForExport(once, false);
+
+    expect(stableStringify(twice)).toEqual(stableStringify(once));
+  });
+
+  it("erase-all clears profiles snapshots and timeline", async () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+
+    const app = createDockAuditApp(root, {
+      backend: backendFromScans([
+        report([observation("usb", "Desk Keyboard")]),
+        report([observation("usb", "Desk Keyboard")]),
+      ]),
+      storage: createMemoryStorage(),
+      progressIntervalMs: 1,
+    });
+
+    await app.waitForIdle();
+
+    setInputValue(
+      getByLabelText(root, "Profile name") as HTMLInputElement,
+      "Cleanup profile",
+    );
+    fireEvent.click(getByLabelText(root, "Desk Keyboard (usb)"));
+    fireEvent.click(getByRole(root, "button", { name: "Save profile" }));
+    fireEvent.click(
+      getByRole(root, "button", { name: "Enable timeline capture" }),
+    );
+    fireEvent.click(getByRole(root, "button", { name: "Check desk" }));
+    await waitFor(() => {
+      expect(root.textContent).toContain("Snapshots and retention (1)");
+    });
+
+    fireEvent.click(
+      getByRole(root, "button", { name: "Erase all local data" }),
+    );
+
+    expect(root.textContent).toContain("No saved profiles yet.");
+    expect(root.textContent).toContain("Snapshots and retention (0)");
+    expect(root.textContent).toContain("Recording disabled.");
   });
 
   it("passes axe accessibility checks without serious or critical violations", async () => {
