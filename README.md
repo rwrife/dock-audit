@@ -125,6 +125,16 @@ pnpm tauri build --debug --no-bundle
 
 The build is an unsigned development executable, not an installer or compatibility claim. CI is configured to run the same format, lint, Rust/UI test, web build, and unsigned application-build gates on Windows and macOS; configured CI does not substitute for a documented native diagnostic run.
 
+## Preview releases
+
+The `Release candidates` workflow builds unsigned Windows (NSIS installer and
+portable ZIP) and macOS universal `.app`/DMG candidates, each bundled with a
+CycloneDX SBOM, third-party license notices, SHA-256 checksums, and the exact
+runner OS evidence from the build. Signing and notarization are not performed
+and are not claimed. Before publishing or trying a candidate, read
+[RELEASE_READINESS.md](RELEASE_READINESS.md) for the evidence-bounded support
+matrix, the clean-machine smoke checklist, data locations, and recovery steps.
+
 ## Contributing
 
 Work is tracked as small GitHub issues and delivered PR-first. Reports should include the OS version, adapter capability summary, redacted fixture or export, and exact verification commands. Never post raw serial numbers, MAC addresses, usernames, or machine names.

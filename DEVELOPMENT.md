@@ -73,6 +73,24 @@ pnpm tauri build --debug --no-bundle
 build command creates an unsigned development executable only; it does not create
 an installer, sign code, notarize an app, or prove hardware compatibility.
 
+## Release candidates
+
+`Release candidates` (`.github/workflows/release.yml`) builds unsigned Windows
+(NSIS + portable ZIP) and macOS universal `.app`/DMG candidates with an SBOM,
+license notices, checksums, and runner-OS evidence. Local rehearsal of the
+bundle assembly:
+
+```text
+python3 scripts/generate_sbom.py candidate-sbom.cdx.json
+corepack pnpm licenses list --json > pnpm-licenses.json
+python3 scripts/generate_notices.py candidate-sbom.cdx.json THIRD-PARTY-NOTICES.txt --pnpm-licenses pnpm-licenses.json
+python3 scripts/check_candidate_cleanliness.py   # after assembling candidate/
+```
+
+See [RELEASE_READINESS.md](RELEASE_READINESS.md) for the support-matrix rules,
+clean-machine smoke checklist, and signing policy (not claimed without owner
+credentials).
+
 ## Architecture boundaries
 
 - `crates/dock-audit-core`: UI-independent status, normalized inventory, and domain contracts.
