@@ -23,7 +23,7 @@ copy_if_exists() {
 if [ "${RUNNER_OS:-}" = "Windows" ]; then
   # NSIS installer produced by `tauri build --bundles nsis`.
   for f in target/release/bundle/nsis/*.exe; do
-    [ -e "$f" ] && cp "$f" "$OUT/"
+    if [ -e "$f" ]; then cp "$f" "$OUT/"; fi
   done
   # Portable ZIP: the standalone exe plus license/notices/SBOM text files.
   exe=target/release/dock-audit.exe
@@ -35,8 +35,8 @@ if [ "${RUNNER_OS:-}" = "Windows" ]; then
   rm -rf "$stage" && mkdir -p "$stage"
   cp "$exe" "$stage/dock-audit.exe"
   cp LICENSE "$stage/LICENSE.txt"
-  [ -f THIRD-PARTY-NOTICES.txt ] && cp THIRD-PARTY-NOTICES.txt "$stage/"
-  [ -f candidate-sbom.cdx.json ] && cp candidate-sbom.cdx.json "$stage/"
+  if [ -f THIRD-PARTY-NOTICES.txt ]; then cp THIRD-PARTY-NOTICES.txt "$stage/"; fi
+  if [ -f candidate-sbom.cdx.json ]; then cp candidate-sbom.cdx.json "$stage/"; fi
   python3 - "$stage" "Dock-Audit-${version}-portable-windows-x64.zip" <<'PY'
 import os, sys, zipfile
 stage, out = sys.argv[1], sys.argv[2]
@@ -54,10 +54,10 @@ else
     exit 1
   fi
   for dmg in "$bundle"/dmg/*.dmg; do
-    [ -e "$dmg" ] && cp "$dmg" "$OUT/"
+    if [ -e "$dmg" ]; then cp "$dmg" "$OUT/"; fi
   done
   for app in "$bundle"/macos/*.app; do
-    [ -e "$app" ] && tar -czf "$OUT/$(basename "$app").tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+    if [ -e "$app" ]; then tar -czf "$OUT/$(basename "$app").tar.gz" -C "$(dirname "$app")" "$(basename "$app")"; fi
   done
 fi
 

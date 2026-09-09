@@ -38,7 +38,7 @@ jobs:
             echo "- runner.os: ${RUNNER_OS}"
             echo "- runner.arch: ${RUNNER_ARCH}"
             echo "- image: ${ImageOS:-unknown} / ${ImageVersion:-unknown}"
-            if [ "${RUNNER_OS}" = "Windows" ]; then ver | head -2; else sw_vers; fi
+            if [ "${RUNNER_OS}" = "Windows" ]; then cmd //c ver | head -2; else sw_vers; fi
           } | tee "runner-os-${{ matrix.os }}.txt"
 
       - name: Install pinned pnpm
