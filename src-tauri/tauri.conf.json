@@ -25,6 +25,28 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "shortDescription": "Local-first dock peripheral comparison",
+    "longDescription": "Dock Audit captures a user-approved baseline of desk peripherals, compares it after a dock connection, and exports redacted support reports. All data stays local; there is no account or telemetry.",
+    "copyright": "Copyright (c) 2026 Dock Audit contributors",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }

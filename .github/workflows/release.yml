@@ -1,0 +1,158 @@
+name: Release candidates
+
+# Builds unsigned Windows and macOS preview candidates for preview releases.
+# Signing and notarization are deliberately NOT performed here: they require
+# owner-provided credentials and are claimed only after an external
+# verification run (see RELEASE_READINESS.md).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-candidates
+  cancel-in-progress: false
+
+jobs:
+  preview-candidates:
+    name: preview candidate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Record runner OS facts for the support matrix
+        shell: bash
+        run: |
+          {
+            echo "## Runner OS evidence (${{ matrix.os }})"
+            echo "- runner.os: ${RUNNER_OS}"
+            echo "- runner.arch: ${RUNNER_ARCH}"
+            echo "- image: ${ImageOS:-unknown} / ${ImageVersion:-unknown}"
+            if [ "${RUNNER_OS}" = "Windows" ]; then cmd //c ver | head -2; else sw_vers; fi
+          } | tee "runner-os-${{ matrix.os }}.txt"
+
+      - name: Install pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Install pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: rustup show active-toolchain
+
+      - name: Add universal macOS Rust targets
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint TypeScript
+        run: pnpm lint:ui
+
+      - name: Lint Rust
+        run: pnpm lint:rust
+
+      - name: Test UI
+        run: pnpm test:ui
+
+      - name: Test Rust workspace
+        run: pnpm test:rust
+
+      - name: Emit redacted macOS diagnostic sample
+        if: matrix.os == 'macos-latest'
+        run: cargo run -p dock-audit-core --example macos_redacted_diagnostic
+
+      - name: Build web assets
+        run: pnpm build
+
+      - name: Capture cargo metadata for the SBOM
+        shell: bash
+        run: cargo metadata --format-version 1 --locked > cargo-metadata.json
+
+      - name: Generate SBOM
+        shell: bash
+        run: python3 scripts/generate_sbom.py candidate-sbom.cdx.json --cargo-metadata cargo-metadata.json
+
+      - name: Generate third-party license notices
+        shell: bash
+        run: |
+          corepack pnpm licenses list --json > pnpm-licenses.json
+          python3 scripts/generate_notices.py candidate-sbom.cdx.json THIRD-PARTY-NOTICES.txt --pnpm-licenses pnpm-licenses.json
+
+      - name: Build Windows preview candidate (NSIS installer + portable ZIP)
+        if: matrix.os == 'windows-latest'
+        run: corepack pnpm tauri build --bundles nsis
+
+      - name: Build macOS preview candidate (universal .app + DMG)
+        if: matrix.os == 'macos-latest'
+        run: corepack pnpm tauri build --bundles app dmg --target universal-apple-darwin
+
+      - name: Assemble candidate bundle
+        shell: bash
+        run: bash scripts/assemble_candidate.sh
+
+      - name: Scan candidate contents for identifier leaks
+        shell: bash
+        run: python3 scripts/check_candidate_cleanliness.py
+
+      - name: Upload candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: dock-audit-preview-${{ matrix.os }}
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-preview:
+    name: publish preview release
+    needs: preview-candidates
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download candidate bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dock-audit-preview-*
+          path: candidates
+
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          generate_release_notes: true
+          files: candidates/**
+          body: |
+            Unsigned preview candidates built by CI on GitHub-hosted Windows
+            Server 2025 and macOS runners. No code signing, notarization, or
+            hardware-lab compatibility testing was performed for these
+            artifacts. See `runner-os-*.txt`, `CHECKSUMS.txt`, and
+            `candidate-sbom.cdx.json` inside each bundle, and
+            `RELEASE_READINESS.md` in the repository for the honest support
+            matrix, smoke checklist, and data-location/uninstall guidance.
