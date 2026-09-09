@@ -7,6 +7,7 @@ import {
 import * as axe from "axe-core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  type BackupArchive,
   type DeviceClass,
   type DockAuditBackend,
   type InventoryReport,
@@ -543,6 +544,56 @@ describe("Dock Audit issue #6 private timeline + export workflow", () => {
     expect(() => parseBackupArchive("{not json")).toThrow(
       "Backup JSON is malformed.",
     );
+
+    // Deterministic mutation corpus (fixed-seed LCG) derived from a valid
+    // archive: every mutated payload must either parse to a valid archive or
+    // throw a plain-text error, and never return a partially restored state.
+    const valid = JSON.stringify(createBackupArchive(sampleState()));
+    const validVersion = createBackupArchive(sampleState()).version;
+    const charset = '"{}[]0az<>:,';
+    let seed = 0x2545f491;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const outcomes: {
+      ok: boolean;
+      parsed?: BackupArchive;
+      message?: string;
+    }[] = [];
+    for (let index = 0; index < 240; index += 1) {
+      const bytes = valid.split("");
+      const position = Math.floor(random() * bytes.length);
+      const injected = charset[Math.floor(random() * charset.length)] ?? ",";
+      const mode = index % 4;
+      if (mode === 0) {
+        bytes.splice(position);
+      } else if (mode === 1) {
+        bytes.splice(position, 0, injected);
+      } else if (mode === 2) {
+        bytes[position] = injected;
+      } else {
+        bytes.splice(position, 1);
+      }
+      const mutated = bytes.join("");
+      try {
+        outcomes.push({ ok: true, parsed: parseBackupArchive(mutated) });
+      } catch (error) {
+        outcomes.push({ ok: false, message: (error as Error).message });
+      }
+    }
+    const accepted = outcomes.filter((outcome) => outcome.ok);
+    const rejected = outcomes.filter((outcome) => !outcome.ok);
+    expect(outcomes.length).toBe(240);
+    expect(rejected.length).toBeGreaterThan(0);
+    for (const outcome of accepted) {
+      expect(outcome.parsed?.version).toBe(validVersion);
+      expect(Array.isArray(outcome.parsed?.profiles)).toBe(true);
+    }
+    for (const outcome of rejected) {
+      expect(outcome.message?.length).toBeGreaterThan(0);
+      expect(outcome.message).not.toMatch(/[{}]/);
+    }
 
     expect(() =>
       parseBackupArchive(
